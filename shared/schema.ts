@@ -13,7 +13,6 @@ export const profiles = pgTable("profiles", {
   bio: text("bio"),
   location: text("location"),
   availability: text("availability"),
-  playStyle: text("play_style"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

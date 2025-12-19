@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Navigation } from "@/components/Navigation";
-import { Trophy, MapPin, User, Activity } from "lucide-react";
+import { Trophy, MapPin, User } from "lucide-react";
 import { z } from "zod";
 import { Redirect, useLocation } from "wouter";
 import { useEffect } from "react";
@@ -18,7 +18,6 @@ const formSchema = insertProfileSchema.pick({
   utrRating: true,
   bio: true,
   location: true,
-  playStyle: true,
   availability: true,
 });
 
@@ -36,7 +35,6 @@ export default function ProfileSetup() {
       utrRating: undefined,
       bio: "",
       location: "",
-      playStyle: "",
       availability: "",
     },
   });
@@ -48,7 +46,6 @@ export default function ProfileSetup() {
         utrRating: profile.utrRating || undefined,
         bio: profile.bio || "",
         location: profile.location || "",
-        playStyle: profile.playStyle || "",
         availability: profile.availability || "",
       });
     }
@@ -115,18 +112,7 @@ export default function ProfileSetup() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-bold flex items-center gap-2 text-primary">
-                    <Activity className="w-4 h-4 text-accent" /> Play Style
-                  </label>
-                  <Input 
-                    placeholder="e.g. Aggressive Basestliner, Serve & Volley" 
-                    {...form.register("playStyle")}
-                    className="h-12 rounded-xl bg-muted/30 border-muted focus:ring-primary/20"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-primary">Bio</label>
+                  <label className="text-sm font-bold text-primary">Bio (Optional)</label>
                   <Textarea 
                     placeholder="Tell us about your tennis background..." 
                     {...form.register("bio")}

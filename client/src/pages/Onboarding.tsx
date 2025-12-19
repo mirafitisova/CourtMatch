@@ -18,10 +18,9 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Trophy, MapPin, Activity, User, Camera } from "lucide-react";
+import { Trophy, MapPin, User } from "lucide-react";
 
 export default function Onboarding() {
   const { user, isLoading } = useAuth();
@@ -30,12 +29,10 @@ export default function Onboarding() {
   const [redirect, setRedirect] = useState(false);
 
   // Extend schema to make fields required for onboarding
-  const formSchema = insertProfileSchema.omit({ userId: true, photoUrl: true }).extend({
+  const formSchema = insertProfileSchema.omit({ userId: true }).extend({
       utrRating: z.number().min(1, "UTR must be at least 1").max(16.5, "UTR cannot exceed 16.5"),
-      bio: z.string().min(10, "Bio must be at least 10 characters"),
+      bio: z.string().optional(),
       location: z.string().min(3, "Location is required"),
-      playStyle: z.string().min(3, "Play style is required"),
-      photoUrl: z.string().optional(),
   });
 
   const form = useForm({
@@ -44,9 +41,7 @@ export default function Onboarding() {
       utrRating: 0,
       bio: "",
       location: "",
-      playStyle: "",
       availability: "",
-      photoUrl: "",
     },
   });
 
@@ -134,35 +129,10 @@ export default function Onboarding() {
 
               <FormField
                 control={form.control}
-                name="playStyle"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2"><Activity className="w-4 h-4" /> Play Style</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select your style" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="aggressive_baseliner">Aggressive Baseliner</SelectItem>
-                        <SelectItem value="counter_puncher">Counter Puncher</SelectItem>
-                        <SelectItem value="serve_and_volley">Serve and Volley</SelectItem>
-                        <SelectItem value="all_court">All Court Player</SelectItem>
-                        <SelectItem value="pusher">Consistency / Pusher</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
                 name="bio"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Bio & Goals</FormLabel>
+                    <FormLabel>Bio & Goals (Optional)</FormLabel>
                     <FormControl>
                       <Textarea 
                         placeholder="Tell others about your tennis background, what you're working on, and what kind of hitting practice you prefer." 
@@ -174,20 +144,6 @@ export default function Onboarding() {
                   </FormItem>
                 )}
               />
-
-               <FormField
-                  control={form.control}
-                  name="photoUrl"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-2"><Camera className="w-4 h-4" /> Profile Photo URL (Optional)</FormLabel>
-                      <FormControl>
-                        <Input placeholder="https://example.com/my-photo.jpg" {...field} value={field.value || ''} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
 
               <Button type="submit" className="w-full text-lg h-12 mt-6" disabled={mutation.isPending}>
                 {mutation.isPending ? "Creating Profile..." : "Complete Setup & Enter App"}
