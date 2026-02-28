@@ -16,17 +16,22 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourname.juniorhit"
+      "bundleIdentifier": "com.juniorhit.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.yourname.juniorhit"
+      "package": "com.juniorhit.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id"
+      }
     }
   }
 }
