@@ -11,6 +11,7 @@ import FindPlayers from "@/pages/FindPlayers";
 import Requests from "@/pages/Requests";
 import ProfileSetup from "@/pages/ProfileSetup";
 import Onboarding from "@/pages/Onboarding";
+import AuthPage from "@/pages/AuthPage";
 
 function Router() {
   const { user, isLoading } = useAuth();
@@ -23,6 +24,7 @@ function Router() {
     <Switch>
       <Route path="/" component={user ? Dashboard : Landing} />
       <Route path="/dashboard" component={user ? Dashboard : Landing} />
+      <Route path="/auth" component={AuthPage} />
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/players" component={FindPlayers} />
       <Route path="/requests" component={Requests} />

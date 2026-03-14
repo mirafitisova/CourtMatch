@@ -10,11 +10,9 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Auth Setup
   await setupAuth(app);
   registerAuthRoutes(app);
 
-  // === Profiles ===
   app.get(api.profiles.list.path, isAuthenticated, async (req, res) => {
     const filters = {
         search: req.query.search as string,
@@ -35,7 +33,7 @@ export async function registerRoutes(
 
   app.put(api.profiles.update.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.session as any).userId;
       const input = api.profiles.update.input.parse(req.body);
       const profile = await storage.updateProfile(userId, input);
       res.json(profile);
@@ -50,19 +48,18 @@ export async function registerRoutes(
     }
   });
 
-  // === Hit Requests ===
   app.get(api.hitRequests.list.path, isAuthenticated, async (req, res) => {
-     const userId = (req.user as any).claims.sub;
+     const userId = (req.session as any).userId;
      const requests = await storage.getHitRequests(userId);
      res.json(requests);
   });
 
   app.post(api.hitRequests.create.path, isAuthenticated, async (req, res) => {
     try {
-      const requesterId = (req.user as any).claims.sub;
+      const requesterId = (req.session as any).userId;
       const input = api.hitRequests.create.input.parse({
           ...req.body,
-          requesterId: requesterId // Ensure requester is current user
+          requesterId: requesterId
       });
       
       const request = await storage.createHitRequest(input);
@@ -80,8 +77,14 @@ export async function registerRoutes(
 
   app.patch(api.hitRequests.updateStatus.path, isAuthenticated, async (req, res) => {
       try {
+        const userId = (req.session as any).userId;
         const { status } = req.body;
-        // Ideally verify user owns request involved
+        const requests = await storage.getHitRequests(userId);
+        const request = requests.find(r => r.id === Number(req.params.id));
+        if (!request) return res.status(404).json({ message: "Request not found" });
+        if (request.requesterId !== userId && request.receiverId !== userId) {
+          return res.status(403).json({ message: "Not authorized" });
+        }
         const updated = await storage.updateHitRequestStatus(Number(req.params.id), status);
         if (!updated) return res.status(404).json({ message: "Request not found" });
         res.json(updated);

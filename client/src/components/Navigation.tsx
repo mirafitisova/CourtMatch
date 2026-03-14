@@ -82,6 +82,7 @@ export function Navigation() {
                 variant="ghost" 
                 className="justify-start gap-3 px-4 py-3 mt-4 text-destructive hover:text-destructive hover:bg-destructive/10"
                 onClick={() => logout()}
+                data-testid="button-mobile-signout"
               >
                 <LogOut className="w-5 h-5" />
                 <span>Sign Out</span>
@@ -112,13 +113,12 @@ export function Navigation() {
           {user && (
             <div className="flex items-center gap-3 mb-4 px-2">
               <Avatar className="h-9 w-9">
-                <AvatarImage src={user.profileImageUrl || undefined} />
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                   {user.firstName?.[0]}{user.lastName?.[0]}
                 </AvatarFallback>
               </Avatar>
               <div className="overflow-hidden">
-                <p className="text-sm font-semibold truncate">{user.firstName} {user.lastName}</p>
+                <p className="text-sm font-semibold truncate" data-testid="text-username">{user.firstName} {user.lastName}</p>
               </div>
             </div>
           )}
@@ -126,6 +126,7 @@ export function Navigation() {
             variant="outline" 
             className="w-full justify-start gap-2 border-dashed hover:border-destructive hover:text-destructive hover:bg-destructive/5 transition-colors"
             onClick={() => logout()}
+            data-testid="button-signout"
           >
             <LogOut className="w-4 h-4" />
             <span>Sign Out</span>

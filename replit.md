@@ -19,14 +19,14 @@ Preferred communication style: Simple, everyday language.
 - **Animations**: Framer Motion for page transitions
 - **Build Tool**: Vite with React plugin
 
-The frontend follows a page-based structure with shared components. Key pages include Dashboard, FindPlayers, Requests, and ProfileSetup. Authentication state is managed through a custom `useAuth` hook that interfaces with the Replit Auth system.
+The frontend follows a page-based structure with shared components. Key pages include Dashboard, FindPlayers, Requests, ProfileSetup, and AuthPage (login/register). Authentication state is managed through a custom `useAuth` hook that interfaces with the session-based email/password auth system.
 
 ### Backend Architecture
 - **Runtime**: Node.js with Express
 - **Language**: TypeScript with ESM modules
 - **API Design**: RESTful endpoints defined in shared route contracts
 - **Validation**: Zod schemas for request/response validation
-- **Authentication**: Replit Auth integration via OpenID Connect with Passport.js
+- **Authentication**: Email/password authentication with bcrypt hashing and express-session
 
 The server uses a modular structure with routes, storage layer, and auth integration separated into distinct modules. All API routes are prefixed with `/api/` and require authentication.
 
@@ -36,7 +36,7 @@ The server uses a modular structure with routes, storage layer, and auth integra
 - **Session Store**: PostgreSQL-backed sessions via connect-pg-simple
 
 Database schema includes:
-- `users` - Authentication user records (managed by Replit Auth)
+- `users` - Authentication user records with email/password (passwordHash stored via bcrypt)
 - `sessions` - Session storage for authentication
 - `profiles` - Player profiles with UTR rating, bio, location, availability
 - `hitRequests` - Hitting session requests between players with status tracking
@@ -59,9 +59,10 @@ The `shared/` directory contains code used by both frontend and backend:
 - **Connection**: Configured via `DATABASE_URL` environment variable
 
 ### Authentication
-- **Replit Auth**: OpenID Connect-based authentication
-- **Dependencies**: `openid-client`, `passport`, `express-session`
+- **Email/Password Auth**: Standard session-based authentication with bcrypt password hashing
+- **Dependencies**: `bcryptjs`, `express-session`, `connect-pg-simple`
 - **Session Secret**: Configured via `SESSION_SECRET` environment variable
+- **Auth Endpoints**: POST `/api/auth/register`, POST `/api/auth/login`, POST `/api/auth/logout`, GET `/api/auth/user`
 
 ### Frontend Libraries
 - **@tanstack/react-query**: Server state management and caching

@@ -22,12 +22,16 @@ export default function Landing() {
             <span>JuniorHit</span>
           </div>
           <div className="flex gap-4">
-            <Button variant="ghost" className="font-semibold" onClick={() => window.location.href = '/api/login'}>
-              Log In
-            </Button>
-            <Button className="bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/20" onClick={() => window.location.href = '/api/login'}>
-              Sign Up
-            </Button>
+            <Link href="/auth">
+              <Button variant="ghost" className="font-semibold" data-testid="button-login">
+                Log In
+              </Button>
+            </Link>
+            <Link href="/auth">
+              <Button className="bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/20" data-testid="button-signup">
+                Sign Up
+              </Button>
+            </Link>
           </div>
         </div>
       </nav>
@@ -68,9 +72,11 @@ export default function Landing() {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="flex flex-col sm:flex-row gap-4 justify-center"
           >
-            <Button size="lg" className="h-14 px-8 text-lg bg-primary hover:bg-primary/90 shadow-xl shadow-primary/25 rounded-2xl" onClick={() => window.location.href = '/api/login'}>
-              Get Started <ArrowRight className="ml-2 w-5 h-5" />
-            </Button>
+            <Link href="/auth">
+              <Button size="lg" className="h-14 px-8 text-lg bg-primary hover:bg-primary/90 shadow-xl shadow-primary/25 rounded-2xl" data-testid="button-get-started">
+                Get Started <ArrowRight className="ml-2 w-5 h-5" />
+              </Button>
+            </Link>
           </motion.div>
         </div>
 
