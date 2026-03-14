@@ -48,11 +48,8 @@ export default function Landing() {
               For Tennis Players
             </span>
             <h1 className="text-5xl md:text-7xl font-display font-bold tracking-tight text-primary leading-tight">
-              Find your next <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary/70 relative">
+              Find your next <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary/70">
                 Hitting Partner
-                <svg className="absolute w-full h-3 -bottom-1 left-0 text-accent opacity-60" viewBox="0 0 100 10" preserveAspectRatio="none">
-                  <path d="M0 5 Q 50 10 100 5" stroke="currentColor" strokeWidth="8" fill="none" />
-                </svg>
               </span>
             </h1>
           </motion.div>
