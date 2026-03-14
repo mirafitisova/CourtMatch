@@ -63,7 +63,7 @@ export default function Landing() {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="text-xl text-muted-foreground leading-relaxed"
           >
-            Connect with other junior players near you. Schedule practice matches, improve your UTR, and level up your game.
+            Connect with other players near you. Schedule practice matches, improve your UTR, and level up your game.
           </motion.p>
           
           <motion.div 
