@@ -5,6 +5,7 @@ import { insertProfileSchema } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { api } from "@shared/routes";
 import { Redirect } from "wouter";
 import { Button } from "@/components/ui/button";
 import { z } from "zod";
@@ -20,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Trophy, MapPin, User } from "lucide-react";
+import { Trophy, MapPin, User, Loader2 } from "lucide-react";
 
 export default function Onboarding() {
   const { user, isLoading } = useAuth();
@@ -47,13 +48,14 @@ export default function Onboarding() {
 
   const mutation = useMutation({
     mutationFn: async (values: any) => {
-      // In a real app, you'd check if profile exists first, but here we assume if they are on onboarding they need to create/update
-      // We'll use the update endpoint which does upsert logic in our storage implementation
       const res = await apiRequest("PUT", "/api/profiles", values);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/profiles/me"] });
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: [api.profiles.list.path] });
+      if (user) {
+        queryClient.invalidateQueries({ queryKey: [api.profiles.get.path, user.id] });
+      }
       toast({
         title: "Profile Created!",
         description: "Welcome to JuniorHit. Let's find some partners!",
@@ -61,11 +63,12 @@ export default function Onboarding() {
       setRedirect(true);
     },
     onError: (error: any) => {
-        toast({
-            title: "Error",
-            description: error.message || "Failed to create profile",
-            variant: "destructive"
-        });
+      const message = error.message || "Failed to create profile";
+      toast({
+        title: "Error Saving Profile",
+        description: message.includes("401") ? "Your session expired. Please sign in again." : message,
+        variant: "destructive",
+      });
     }
   });
 
@@ -145,8 +148,10 @@ export default function Onboarding() {
                 )}
               />
 
-              <Button type="submit" className="w-full text-lg h-12 mt-6" disabled={mutation.isPending}>
-                {mutation.isPending ? "Creating Profile..." : "Complete Setup & Enter App"}
+              <Button type="submit" className="w-full text-lg h-12 mt-6" disabled={mutation.isPending} data-testid="button-complete-profile">
+                {mutation.isPending ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
+                ) : "Complete Setup & Enter App"}
               </Button>
             </form>
           </Form>
