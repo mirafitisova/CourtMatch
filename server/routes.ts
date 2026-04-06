@@ -9,6 +9,7 @@ import { db } from "./db";
 import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
 import { sendHitRequestEmail } from "./email";
+import { registerAdminRoutes } from "./adminRoutes";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -16,6 +17,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   await setupAuth(app);
   registerAuthRoutes(app);
+  registerAdminRoutes(app);
 
   app.get(api.profiles.list.path, isAuthenticated, async (req, res) => {
     const filters = {

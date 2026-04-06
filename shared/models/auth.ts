@@ -22,6 +22,7 @@ export const users = pgTable("users", {
   zipCode: varchar("zip_code"),
   parentEmail: varchar("parent_email"),
   accountStatus: varchar("account_status").notNull().default("ACTIVE"),
+  isAdmin: boolean("is_admin").notNull().default(false),
   guidelinesAcceptedAt: timestamp("guidelines_accepted_at"),
   // Email verification
   emailVerificationToken: varchar("email_verification_token"),
