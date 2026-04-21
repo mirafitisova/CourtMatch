@@ -28,6 +28,7 @@ import { users } from "./auth";
 
 export const teamLevelEnum = pgEnum("team_level", ["VARSITY", "JV", "NONE"]);
 export const handednessEnum = pgEnum("handedness", ["RIGHT", "LEFT", "AMBIDEXTROUS"]);
+export const preferredSurfaceEnum = pgEnum("preferred_surface", ["HARD", "CLAY", "GRASS", "NO_PREFERENCE"]);
 export const courtTypeEnum = pgEnum("court_type", ["PUBLIC_FREE", "PUBLIC_PAY", "PRIVATE", "SCHOOL"]);
 export const netConditionEnum = pgEnum("net_condition", ["GOOD", "FAIR", "POOR"]);
 export const matchRequestStatusEnum = pgEnum("match_request_status", [
@@ -62,6 +63,13 @@ export const playerProfiles = pgTable("player_profiles", {
   handedness: handednessEnum("handedness").notNull().default("RIGHT"),
   /** Tags e.g. ["rally", "match_play", "serve_practice"] */
   playStyles: text("play_styles").array().notNull().default(sql`ARRAY[]::text[]`),
+  preferredSurface: preferredSurfaceEnum("preferred_surface"),
+  /** e.g. "1-2 times/week" */
+  playingFrequency: varchar("playing_frequency"),
+  /** Area names the player prefers to hit in */
+  preferredAreas: text("preferred_areas").array().notNull().default(sql`ARRAY[]::text[]`),
+  /** Max drive distance in miles */
+  maxDriveMiles: integer("max_drive_miles"),
   /** Max 280 characters */
   bio: varchar("bio", { length: 280 }),
   /** Computed 0–100 score; updated whenever profile fields change */

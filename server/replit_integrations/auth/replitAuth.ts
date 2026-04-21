@@ -6,12 +6,17 @@ import { Pool } from "pg";
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000;
   const pgStore = connectPg(session);
+  const dbUrl = process.env.DATABASE_URL ?? "";
+  const isRemoteDb =
+    dbUrl.length > 0 &&
+    !dbUrl.includes("localhost") &&
+    !dbUrl.includes("127.0.0.1");
   const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: dbUrl,
     connectionTimeoutMillis: 10000,
     idleTimeoutMillis: 30000,
     max: 5,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+    ssl: isRemoteDb ? { rejectUnauthorized: false } : undefined,
   });
   const sessionStore = new pgStore({
     pool,
@@ -19,8 +24,12 @@ export function getSession() {
     ttl: sessionTtl,
     tableName: "sessions",
   });
+  const secret = process.env.SESSION_SECRET ?? "dev-secret-change-in-production";
+  if (!process.env.SESSION_SECRET) {
+    console.warn("[auth] SESSION_SECRET not set — using insecure default. Set it in .env for production.");
+  }
   return session({
-    secret: process.env.SESSION_SECRET!,
+    secret,
     store: sessionStore,
     resave: false,
     saveUninitialized: false,

@@ -17,6 +17,10 @@ import SignupSuccess from "@/pages/SignupSuccess";
 import SafetyGuidelines from "@/pages/SafetyGuidelines";
 import ParentApprovePage from "@/pages/ParentApprovePage";
 import CourtsAdmin from "@/pages/admin/CourtsAdmin";
+import ProfileSetupWizard from "@/pages/ProfileSetupWizard";
+import Search from "@/pages/Search";
+import PlayerProfile from "@/pages/PlayerProfile";
+import Courts from "@/pages/Courts";
 
 function Router() {
   const { user, isLoading } = useAuth();
@@ -27,15 +31,19 @@ function Router() {
 
   return (
     <Switch>
-      <Route path="/" component={user ? Dashboard : Landing} />
+      <Route path="/" component={user ? Search : Landing} />
       <Route path="/dashboard" component={user ? Dashboard : Landing} />
       <Route path="/auth" component={AuthPage} />
       <Route path="/signup" component={SignupPage} />
       <Route path="/safety-guidelines" component={SafetyGuidelines} />
       <Route path="/signup/success" component={SignupSuccess} />
       <Route path="/onboarding" component={Onboarding} />
+      <Route path="/search" component={Search} />
+      <Route path="/courts" component={Courts} />
+      <Route path="/player/:id" component={PlayerProfile} />
       <Route path="/players" component={FindPlayers} />
       <Route path="/requests" component={Requests} />
+      <Route path="/profile/setup" component={ProfileSetupWizard} />
       <Route path="/profile-setup" component={ProfileSetup} />
       <Route path="/profile" component={ProfileSetup} />
       <Route path="/parent-approve/:token" component={ParentApprovePage} />

@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { Trophy, Users, Calendar, UserCircle, LogOut, Menu, X } from "lucide-react";
+import { Trophy, Users, Calendar, UserCircle, LogOut, Menu, X, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
@@ -12,8 +12,8 @@ export function Navigation() {
   const [isOpen, setIsOpen] = useState(false);
 
   const navItems = [
-    { href: "/", label: "Dashboard", icon: Trophy },
-    { href: "/players", label: "Find Players", icon: Users },
+    { href: "/", label: "Find Partners", icon: Users },
+    { href: "/courts", label: "Courts", icon: MapPin },
     { href: "/requests", label: "Requests", icon: Calendar },
     { href: "/profile", label: "My Profile", icon: UserCircle },
   ];

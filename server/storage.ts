@@ -5,6 +5,11 @@ import {
   type HitRequest, type InsertHitRequest, type UpdateHitRequestStatus,
   type ProfileWithUser, type HitRequestWithProfiles
 } from "@shared/schema";
+import {
+  playerProfiles, weeklyAvailability,
+  type PlayerProfile, type InsertPlayerProfile,
+  type WeeklyAvailability, type InsertWeeklyAvailability,
+} from "@shared/models/tennis";
 import { users } from "@shared/models/auth"; // Import auth schema directly
 import { eq, or, and, desc, ilike, gte, lte } from "drizzle-orm";
 
@@ -14,6 +19,14 @@ export interface IStorage {
   getProfiles(filters?: { search?: string, minUtr?: number, maxUtr?: number }): Promise<ProfileWithUser[]>;
   createProfile(profile: InsertProfile): Promise<Profile>;
   updateProfile(userId: string, updates: UpdateProfileRequest): Promise<Profile>;
+
+  // Player Profiles (extended tennis schema)
+  getPlayerProfile(userId: string): Promise<PlayerProfile | undefined>;
+  upsertPlayerProfile(userId: string, data: Partial<InsertPlayerProfile>): Promise<PlayerProfile>;
+
+  // Weekly Availability
+  getWeeklyAvailability(userId: string): Promise<WeeklyAvailability[]>;
+  replaceWeeklyAvailability(userId: string, slots: Omit<InsertWeeklyAvailability, "userId">[]): Promise<WeeklyAvailability[]>;
 
   // Hit Requests
   getHitRequests(userId: string): Promise<HitRequestWithProfiles[]>;
@@ -79,12 +92,52 @@ export class DatabaseStorage implements IStorage {
     if (!existing) {
        return this.createProfile({ ...updates, userId } as InsertProfile);
     }
-    
+
     const [updated] = await db.update(profiles)
       .set(updates)
       .where(eq(profiles.userId, userId))
       .returning();
     return updated;
+  }
+
+  async getPlayerProfile(userId: string): Promise<PlayerProfile | undefined> {
+    const [row] = await db.select()
+      .from(playerProfiles)
+      .where(eq(playerProfiles.userId, userId))
+      .limit(1);
+    return row;
+  }
+
+  async upsertPlayerProfile(userId: string, data: Partial<InsertPlayerProfile>): Promise<PlayerProfile> {
+    const existing = await this.getPlayerProfile(userId);
+    if (!existing) {
+      const [created] = await db.insert(playerProfiles)
+        .values({ ...data, userId } as InsertPlayerProfile)
+        .returning();
+      return created;
+    }
+    const [updated] = await db.update(playerProfiles)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(playerProfiles.userId, userId))
+      .returning();
+    return updated;
+  }
+
+  async getWeeklyAvailability(userId: string): Promise<WeeklyAvailability[]> {
+    return db.select().from(weeklyAvailability).where(eq(weeklyAvailability.userId, userId));
+  }
+
+  async replaceWeeklyAvailability(
+    userId: string,
+    slots: Omit<InsertWeeklyAvailability, "userId">[],
+  ): Promise<WeeklyAvailability[]> {
+    await db.delete(weeklyAvailability).where(eq(weeklyAvailability.userId, userId));
+    if (slots.length === 0) return [];
+    const rows = await db
+      .insert(weeklyAvailability)
+      .values(slots.map((s) => ({ ...s, userId })))
+      .returning();
+    return rows;
   }
 
   async getHitRequests(userId: string): Promise<HitRequestWithProfiles[]> {

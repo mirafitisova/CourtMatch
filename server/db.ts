@@ -8,12 +8,18 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
+// Enable SSL for any remote database (Neon, Supabase, Render, etc.).
+// Local databases (localhost / 127.0.0.1) don't need SSL.
+const isRemoteDb =
+  !process.env.DATABASE_URL.includes("localhost") &&
+  !process.env.DATABASE_URL.includes("127.0.0.1");
+
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   connectionTimeoutMillis: 10000,
   idleTimeoutMillis: 30000,
   max: 10,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+  ssl: isRemoteDb ? { rejectUnauthorized: false } : undefined,
 });
 
 pool.on('error', (err) => {

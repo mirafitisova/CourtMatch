@@ -87,6 +87,11 @@ export function registerAuthRoutes(app: Express): void {
       }
 
       const passwordHash = await bcrypt.hash(input.password, 10);
+      const emailEnabled = !!process.env.RESEND_API_KEY;
+
+      // When email is not configured (e.g. local dev), skip verification and
+      // activate accounts immediately so users can sign in right away.
+      const initialStatus = emailEnabled ? "PENDING_EMAIL" : "ACTIVE";
 
       const user = await authStorage.createUser({
         email: input.email,
@@ -96,9 +101,15 @@ export function registerAuthRoutes(app: Express): void {
         dateOfBirth: input.dateOfBirth,
         zipCode: input.zipCode,
         parentEmail: input.parentEmail ?? null,
-        accountStatus: "PENDING_EMAIL",
+        accountStatus: initialStatus,
         guidelinesAcceptedAt: new Date(),
       });
+
+      if (!emailEnabled) {
+        // No email provider — account is active immediately.
+        const { passwordHash: _, ...safeUser } = user;
+        return res.status(201).json({ ...safeUser, needsEmailVerification: false });
+      }
 
       // Generate email verification token (24h expiry)
       const token = randomBytes(32).toString("hex");
@@ -115,12 +126,14 @@ export function registerAuthRoutes(app: Express): void {
         });
       } catch (emailErr) {
         console.error("[auth] Failed to send verification email:", emailErr);
-        // Account was created — tell the user to contact support rather than silently failing
+        // Email send failed after account was created — activate the account so
+        // the user isn't permanently locked out.
+        await authStorage.verifyEmail(user.id, "ACTIVE");
         const { passwordHash: _, ...safeUser } = user;
         return res.status(201).json({
           ...safeUser,
-          needsEmailVerification: true,
-          emailWarning: "Account created but we couldn't send the verification email. Please contact support.",
+          needsEmailVerification: false,
+          emailWarning: "We couldn't send a verification email, but your account is active. You can sign in now.",
         });
       }
 
@@ -251,9 +264,14 @@ export function registerAuthRoutes(app: Express): void {
       }
 
       if (user.accountStatus === "PENDING_EMAIL") {
-        return res.status(403).json({
-          message: "Please verify your email address before signing in. Check your inbox for a verification link.",
-        });
+        // If email is not configured we can't verify — auto-activate and let them in.
+        if (!process.env.RESEND_API_KEY) {
+          await authStorage.verifyEmail(user.id, "ACTIVE");
+        } else {
+          return res.status(403).json({
+            message: "Please verify your email address before signing in. Check your inbox for a verification link.",
+          });
+        }
       }
 
       if (user.accountStatus === "PENDING_PARENT" || user.accountStatus === "PENDING") {
@@ -282,8 +300,8 @@ export function registerAuthRoutes(app: Express): void {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
-      console.error("Login error:", err);
-      return res.status(500).json({ message: "Login failed" });
+      console.error("[auth] Login error:", err instanceof Error ? err.message : err);
+      return res.status(500).json({ message: "Login failed. Please try again." });
     }
   });
 
