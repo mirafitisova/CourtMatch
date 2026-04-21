@@ -1,13 +1,10 @@
 import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 
 export function serveStatic(app: Express) {
-  // esbuild transforms import.meta.url to __filename in CJS output;
-  // import.meta.dirname is NOT transformed and becomes undefined.
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const distPath = path.resolve(__dirname, "public");
+  // process.cwd() is the project root on Render (where `node dist/index.cjs` is run)
+  const distPath = path.resolve(process.cwd(), "dist", "public");
   if (!fs.existsSync(distPath)) {
     throw new Error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`,
