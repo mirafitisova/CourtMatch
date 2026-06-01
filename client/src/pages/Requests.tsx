@@ -8,21 +8,37 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Calendar, Clock, MapPin, Check, X, MessageSquare, CalendarPlus, Loader2 } from "lucide-react";
+import { Calendar, Clock, MapPin, Check, X, MessageSquare, CalendarPlus, Loader2, ArrowRight } from "lucide-react";
 import { format } from "date-fns";
-import { Redirect } from "wouter";
+import { Link, Redirect } from "wouter";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+const PRACTICE_TYPES = ["Rally", "Match play", "Serve & return", "Drills", "Cardio tennis", "Other"];
+const COST_OPTIONS = ["Split 50/50", "I'll cover", "You cover", "Free court"];
 
 export default function Requests() {
   const { user } = useAuth();
   const { data: requests, isLoading } = useHitRequests();
   const updateStatus = useUpdateHitRequestStatus();
+
+  const { data: courts = [] } = useQuery<any[]>({
+    queryKey: ["/api/courts"],
+    queryFn: async () => {
+      const res = await fetch("/api/courts", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
 
   // Schedule dialog state
   const [scheduleDialog, setScheduleDialog] = useState<{ open: boolean; requestId: number | null; partnerName: string }>({
@@ -30,15 +46,25 @@ export default function Requests() {
   });
   const [scheduleTime, setScheduleTime] = useState("");
   const [scheduleLocation, setScheduleLocation] = useState("");
+  const [scheduleCourt, setScheduleCourt] = useState<number | undefined>(undefined);
+  const [practicetype, setPracticetype] = useState("");
+  const [costSplit, setCostSplit] = useState("");
 
   if (!user) return <Redirect to="/" />;
 
   const received = requests?.filter(r => r.receiverId === user.id) || [];
   const sent = requests?.filter(r => r.requesterId === user.id) || [];
 
-  const openAcceptDialog = (requestId: number, partnerName: string) => {
+  const resetDialog = () => {
     setScheduleTime("");
     setScheduleLocation("");
+    setScheduleCourt(undefined);
+    setPracticetype("");
+    setCostSplit("");
+  };
+
+  const openAcceptDialog = (requestId: number, partnerName: string) => {
+    resetDialog();
     setScheduleDialog({ open: true, requestId, partnerName });
   };
 
@@ -49,6 +75,9 @@ export default function Requests() {
       status: "accepted",
       scheduledTime: (!skipSchedule && scheduleTime) ? scheduleTime : undefined,
       location: (!skipSchedule && scheduleLocation) ? scheduleLocation : undefined,
+      courtId: (!skipSchedule && scheduleCourt) ? scheduleCourt : undefined,
+      practiceType: (!skipSchedule && practicetype) ? practicetype : undefined,
+      costSplit: (!skipSchedule && costSplit) ? costSplit : undefined,
     }, {
       onSuccess: () => setScheduleDialog({ open: false, requestId: null, partnerName: "" }),
     });
@@ -57,8 +86,7 @@ export default function Requests() {
   const handleAddSchedule = (requestId: number) => {
     const req = requests?.find(r => r.id === requestId);
     const partner = req?.requester;
-    setScheduleTime("");
-    setScheduleLocation("");
+    resetDialog();
     setScheduleDialog({
       open: true,
       requestId,
@@ -73,6 +101,9 @@ export default function Requests() {
       status: "accepted",
       scheduledTime: scheduleTime || undefined,
       location: scheduleLocation || undefined,
+      courtId: scheduleCourt,
+      practiceType: practicetype || undefined,
+      costSplit: costSplit || undefined,
     }, {
       onSuccess: () => setScheduleDialog({ open: false, requestId: null, partnerName: "" }),
     });
@@ -124,38 +155,45 @@ export default function Requests() {
 
             {/* Schedule details for accepted requests */}
             {req.status === "accepted" && (
-              <div className="bg-green-50 rounded-xl p-3 flex flex-wrap gap-x-5 gap-y-1.5 items-center justify-between">
-                <div className="flex flex-wrap gap-x-5 gap-y-1.5">
-                  <div className="flex items-center gap-1.5 text-sm text-green-800">
-                    <Calendar className="w-4 h-4" />
-                    {req.scheduledTime
-                      ? format(new Date(req.scheduledTime), "EEE, MMM d")
-                      : <span className="italic text-green-600">Date TBD</span>}
+              <div className="bg-green-50 rounded-xl p-3 space-y-2">
+                <div className="flex flex-wrap gap-x-5 gap-y-1.5 items-center justify-between">
+                  <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+                    <div className="flex items-center gap-1.5 text-sm text-green-800">
+                      <Calendar className="w-4 h-4" />
+                      {req.scheduledTime
+                        ? format(new Date(req.scheduledTime), "EEE, MMM d")
+                        : <span className="italic text-green-600">Date TBD</span>}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-sm text-green-800">
+                      <Clock className="w-4 h-4" />
+                      {req.scheduledTime
+                        ? format(new Date(req.scheduledTime), "h:mm a")
+                        : <span className="italic text-green-600">Time TBD</span>}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-sm text-green-800">
+                      <MapPin className="w-4 h-4" />
+                      {req.location
+                        ? req.location
+                        : <span className="italic text-green-600">Location TBD</span>}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 text-sm text-green-800">
-                    <Clock className="w-4 h-4" />
-                    {req.scheduledTime
-                      ? format(new Date(req.scheduledTime), "h:mm a")
-                      : <span className="italic text-green-600">Time TBD</span>}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-sm text-green-800">
-                    <MapPin className="w-4 h-4" />
-                    {req.location
-                      ? req.location
-                      : <span className="italic text-green-600">Location TBD</span>}
-                  </div>
+                  {!hasSchedule && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-green-700 border-green-200 hover:bg-green-100 rounded-lg text-xs h-8"
+                      onClick={() => handleAddSchedule(req.id)}
+                      data-testid={`button-add-schedule-${req.id}`}
+                    >
+                      <CalendarPlus className="w-3.5 h-3.5 mr-1.5" /> Add Schedule
+                    </Button>
+                  )}
                 </div>
-                {!hasSchedule && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-green-700 border-green-200 hover:bg-green-100 rounded-lg text-xs h-8"
-                    onClick={() => handleAddSchedule(req.id)}
-                    data-testid={`button-add-schedule-${req.id}`}
-                  >
-                    <CalendarPlus className="w-3.5 h-3.5 mr-1.5" /> Add Schedule
+                <Link href={`/session/${req.id}`}>
+                  <Button size="sm" className="w-full rounded-lg text-xs h-8 bg-green-700 hover:bg-green-800">
+                    View Session Details <ArrowRight className="w-3 h-3 ml-1.5" />
                   </Button>
-                )}
+                </Link>
               </div>
             )}
 
@@ -251,7 +289,7 @@ export default function Requests() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 mt-2">
+          <div className="space-y-3 mt-2">
             <div className="space-y-1.5">
               <label className="text-sm font-semibold flex items-center gap-2 text-primary">
                 <Calendar className="w-4 h-4" /> Date & Time
@@ -264,20 +302,65 @@ export default function Requests() {
                 data-testid="input-schedule-time"
               />
             </div>
+
             <div className="space-y-1.5">
               <label className="text-sm font-semibold flex items-center gap-2 text-primary">
-                <MapPin className="w-4 h-4" /> Location
+                <MapPin className="w-4 h-4" /> Court
               </label>
-              <Input
-                placeholder="e.g. Flushing Meadows Tennis Center"
-                className="rounded-xl bg-muted/40 border-0 focus-visible:ring-1 focus-visible:ring-primary/30"
-                value={scheduleLocation}
-                onChange={e => setScheduleLocation(e.target.value)}
-                data-testid="input-schedule-location"
-              />
+              <Select onValueChange={v => setScheduleCourt(Number(v))}>
+                <SelectTrigger className="rounded-xl bg-muted/40 border-0 focus:ring-1 focus:ring-primary/30">
+                  <SelectValue placeholder="Select a court (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {courts.map((c: any) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name}
+                      {c.distanceMiles != null ? ` · ${c.distanceMiles} mi` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!scheduleCourt && (
+                <Input
+                  placeholder="Or type a location..."
+                  className="rounded-xl bg-muted/40 border-0 focus-visible:ring-1 focus-visible:ring-primary/30"
+                  value={scheduleLocation}
+                  onChange={e => setScheduleLocation(e.target.value)}
+                  data-testid="input-schedule-location"
+                />
+              )}
             </div>
 
-            <div className="flex gap-2 pt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-primary">Practice type</label>
+                <Select onValueChange={setPracticetype}>
+                  <SelectTrigger className="rounded-xl bg-muted/40 border-0 focus:ring-1 focus:ring-primary/30">
+                    <SelectValue placeholder="Optional" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRACTICE_TYPES.map(t => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-primary">Cost split</label>
+                <Select onValueChange={setCostSplit}>
+                  <SelectTrigger className="rounded-xl bg-muted/40 border-0 focus:ring-1 focus:ring-primary/30">
+                    <SelectValue placeholder="Optional" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COST_OPTIONS.map(o => (
+                      <SelectItem key={o} value={o}>{o}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
               <Button
                 variant="outline"
                 className="flex-1 rounded-xl"

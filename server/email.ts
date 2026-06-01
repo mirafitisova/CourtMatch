@@ -2,7 +2,7 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const FROM = "CourtMatch <onboarding@resend.dev>";
+const FROM = "CourtMatch <noreply@resend.dev>";
 
 function isConfigured() {
   if (!process.env.RESEND_API_KEY) {
@@ -92,6 +92,155 @@ export async function sendVerificationEmail(opts: VerificationEmailOptions) {
   } catch (err) {
     console.error("[email] Failed to send verification email:", err);
     throw err;
+  }
+}
+
+// ── No-show notification ─────────────────────────────────────────────────────
+
+interface NoShowEmailOptions {
+  toEmail: string;
+  toFirstName: string;
+  markedByFirstName: string;
+  scheduledAt: Date;
+  courtName: string | null;
+  sessionId: number;
+  baseUrl: string;
+}
+
+export async function sendNoShowEmail(opts: NoShowEmailOptions) {
+  if (!isConfigured()) return;
+  const { toFirstName, markedByFirstName, scheduledAt, courtName, sessionId, baseUrl } = opts;
+
+  const timeStr = scheduledAt.toLocaleString("en-US", {
+    weekday: "short", month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit", hour12: true,
+  });
+
+  const html = wrapper(`
+    <h1 style="color:#dc2626;font-size:22px;margin:0 0 8px;">⚠️ No-Show Recorded</h1>
+    <p style="color:#4b5563;margin:0 0 20px;">
+      Hi ${toFirstName}, <strong>${markedByFirstName}</strong> waited for you and marked you as a no-show
+      for your session on ${timeStr}${courtName ? ` at ${courtName}` : ""}.
+    </p>
+    <div style="background:#fef2f2;border-left:4px solid #dc2626;border-radius:8px;padding:16px;margin-bottom:24px;">
+      <p style="color:#991b1b;font-size:14px;margin:0;">
+        After 3 no-shows your profile will display a warning to other players.
+        If this was a mistake or an emergency, please message your partner directly.
+      </p>
+    </div>
+    ${btn(`${baseUrl}/session/${sessionId}`, "View Session")}
+  `);
+
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to: opts.toEmail,
+      subject: `You were marked as a no-show for your session with ${markedByFirstName}`,
+      html,
+    });
+    console.log(`[email] No-show notification sent to ${opts.toEmail}`);
+  } catch (err) {
+    console.error("[email] Failed to send no-show email:", err);
+  }
+}
+
+// ── Session reminder ─────────────────────────────────────────────────────────
+
+interface SessionReminderOptions {
+  toEmail: string;
+  toFirstName: string;
+  partnerFirstName: string;
+  partnerLastName: string;
+  scheduledAt: Date;
+  courtName: string | null;
+  courtAddress: string | null;
+  practiceType: string | null;
+  sessionId: number;
+  hoursUntil: 24 | 1;
+  baseUrl: string;
+  isParentNotification?: boolean;
+  playerFirstName?: string;
+}
+
+export async function sendSessionReminderEmail(opts: SessionReminderOptions) {
+  if (!isConfigured()) return;
+  const { toFirstName, partnerFirstName, partnerLastName, scheduledAt, courtName, courtAddress, practiceType, sessionId, hoursUntil, baseUrl, isParentNotification, playerFirstName } = opts;
+
+  const timeStr = scheduledAt.toLocaleString("en-US", {
+    weekday: "short", month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit", hour12: true,
+  });
+
+  const label = hoursUntil === 24 ? "tomorrow" : "in 1 hour";
+  const greeting = isParentNotification
+    ? `Hi, ${playerFirstName ?? "your child"}'s upcoming tennis session is ${label}.`
+    : `Hi ${toFirstName}, your session is coming up ${label}!`;
+
+  const locationLine = courtName
+    ? `<p style="color:#166534;margin:0 0 4px;">📍 ${courtName}${courtAddress ? ` · ${courtAddress}` : ""}</p>`
+    : "";
+
+  const html = wrapper(`
+    <h1 style="color:#2D7A4F;font-size:22px;margin:0 0 8px;">🎾 Session Reminder</h1>
+    <p style="color:#4b5563;margin:0 0 20px;">${greeting}</p>
+    <div style="background:#f0fdf4;border-left:4px solid #2D7A4F;border-radius:8px;padding:16px;margin-bottom:24px;">
+      <p style="color:#166534;font-weight:600;margin:0 0 8px;">📅 ${timeStr}</p>
+      <p style="color:#166534;margin:0 0 4px;">🎾 Hit with ${partnerFirstName} ${partnerLastName}</p>
+      ${locationLine}
+      ${practiceType ? `<p style="color:#166534;margin:0;">🏃 ${practiceType}</p>` : ""}
+    </div>
+    ${btn(`${baseUrl}/session/${sessionId}`, "View Session Details")}
+  `);
+
+  const subject = hoursUntil === 24
+    ? `Reminder: Hit with ${partnerFirstName} is tomorrow`
+    : `Reminder: Hit with ${partnerFirstName} is in 1 hour`;
+
+  try {
+    await resend.emails.send({ from: FROM, to: opts.toEmail, subject, html });
+    console.log(`[email] ${hoursUntil}h reminder sent to ${opts.toEmail}`);
+  } catch (err) {
+    console.error("[email] Failed to send session reminder:", err);
+  }
+}
+
+// ── Rating prompt ─────────────────────────────────────────────────────────────
+
+interface RatingPromptEmailOptions {
+  toEmail: string;
+  toFirstName: string;
+  partnerFirstName: string;
+  partnerLastName: string;
+  sessionId: number;
+  baseUrl: string;
+}
+
+export async function sendRatingPromptEmail(opts: RatingPromptEmailOptions) {
+  if (!isConfigured()) return;
+  const { toFirstName, partnerFirstName, partnerLastName, sessionId, baseUrl } = opts;
+
+  const html = wrapper(`
+    <h1 style="color:#2D7A4F;font-size:22px;margin:0 0 8px;">🎾 How was your session?</h1>
+    <p style="color:#4b5563;margin:0 0 24px;">
+      Hi ${toFirstName}! How was your hit with <strong>${partnerFirstName} ${partnerLastName}</strong>?
+      Leave a quick rating to help other players in the community.
+    </p>
+    ${btn(`${baseUrl}/session/${sessionId}/rate`, "Rate Your Session")}
+    <p style="color:#9ca3af;font-size:13px;margin:24px 0 0;">
+      Takes 30 seconds. Ratings are kept private — only the composite average is shown publicly.
+    </p>
+  `);
+
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to: opts.toEmail,
+      subject: `How was your hit with ${partnerFirstName}?`,
+      html,
+    });
+    console.log(`[email] Rating prompt sent to ${opts.toEmail}`);
+  } catch (err) {
+    console.error("[email] Failed to send rating prompt email:", err);
   }
 }
 

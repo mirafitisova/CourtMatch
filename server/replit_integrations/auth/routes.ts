@@ -143,8 +143,13 @@ export function registerAuthRoutes(app: Express): void {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
-      console.error("Registration error:", err);
-      return res.status(500).json({ message: "Registration failed" });
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("Registration error:", detail);
+      const isDev = process.env.NODE_ENV !== "production";
+      return res.status(500).json({
+        message: "Registration failed",
+        ...(isDev && { detail }),
+      });
     }
   });
 

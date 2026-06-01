@@ -8,11 +8,20 @@ import { isAuthenticated } from "./replit_integrations/auth";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
-import { sendHitRequestEmail } from "./email";
+import { sendHitRequestEmail, sendSessionReminderEmail, sendNoShowEmail, sendRatingPromptEmail } from "./email";
 import { registerAdminRoutes } from "./adminRoutes";
 import { registerSearchRoutes } from "./searchRoutes";
 import { haversineDistanceMiles, resolveCoords } from "@shared/lib/geo";
 import { weeklyAvailability, playerProfiles, courts } from "@shared/models/tennis";
+
+function calcAge(dob: string): number {
+  const birth = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
 
 const playerProfileInputSchema = z.object({
   utrRating: z.number().min(1).max(16.5).optional().nullable(),
@@ -208,25 +217,343 @@ export async function registerRoutes(
   });
 
   app.patch(api.hitRequests.updateStatus.path, isAuthenticated, async (req, res) => {
-      try {
-        const userId = (req.session as any).userId;
-        const { status, scheduledTime, location } = req.body;
-        const requests = await storage.getHitRequests(userId);
-        const request = requests.find(r => r.id === Number(req.params.id));
-        if (!request) return res.status(404).json({ message: "Request not found" });
-        if (request.requesterId !== userId && request.receiverId !== userId) {
-          return res.status(403).json({ message: "Not authorized" });
-        }
-        const scheduling = {
-          scheduledTime: scheduledTime ? new Date(scheduledTime) : undefined,
-          location: location || undefined,
-        };
-        const updated = await storage.updateHitRequestStatus(Number(req.params.id), status, scheduling);
-        if (!updated) return res.status(404).json({ message: "Request not found" });
-        res.json(updated);
-      } catch (err) {
-          res.status(400).json({ message: "Invalid update" });
+    try {
+      const userId = (req.session as any).userId;
+      const { status, scheduledTime, location, courtId, practiceType, costSplit, cancelReason } = req.body;
+      const requests = await storage.getHitRequests(userId);
+      const request = requests.find(r => r.id === Number(req.params.id));
+      if (!request) return res.status(404).json({ message: "Request not found" });
+      if (request.requesterId !== userId && request.receiverId !== userId) {
+        return res.status(403).json({ message: "Not authorized" });
       }
+      const updated = await storage.updateHitRequestStatus(Number(req.params.id), status, {
+        scheduledTime: scheduledTime ? new Date(scheduledTime) : undefined,
+        location: location || undefined,
+        courtId: courtId || undefined,
+        practiceType: practiceType || undefined,
+        costSplit: costSplit || undefined,
+        cancelReason: cancelReason || undefined,
+      });
+      if (!updated) return res.status(404).json({ message: "Request not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ message: "Invalid update" });
+    }
+  });
+
+  // ── Session detail & messaging ────────────────────────────────────────────────
+
+  app.get("/api/sessions/upcoming", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const sessions = await storage.getUpcomingSessions(userId);
+      res.json(sessions);
+    } catch (err) {
+      console.error("Upcoming sessions error:", err);
+      res.status(500).json({ message: "Failed to load upcoming sessions" });
+    }
+  });
+
+  app.get("/api/sessions/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const session = await storage.getSessionDetail(Number(req.params.id));
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      if (session.requesterId !== userId && session.receiverId !== userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      res.json(session);
+    } catch (err) {
+      console.error("Session detail error:", err);
+      res.status(500).json({ message: "Failed to load session" });
+    }
+  });
+
+  app.get("/api/sessions/:id/messages", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const session = await storage.getSessionDetail(Number(req.params.id));
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      if (session.requesterId !== userId && session.receiverId !== userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const messages = await storage.getSessionMessages(Number(req.params.id));
+      res.json(messages);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load messages" });
+    }
+  });
+
+  app.post("/api/sessions/:id/messages", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const { content } = req.body;
+      if (!content?.trim()) return res.status(400).json({ message: "Message cannot be empty" });
+      if (content.length > 500) return res.status(400).json({ message: "Message too long (max 500 characters)" });
+      const session = await storage.getSessionDetail(Number(req.params.id));
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      if (session.requesterId !== userId && session.receiverId !== userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const msg = await storage.createSessionMessage(Number(req.params.id), userId, content.trim());
+      res.status(201).json(msg);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
+  app.post("/api/sessions/:id/checkin", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const { locationVerified = false } = req.body;
+      const session = await storage.getSessionDetail(Number(req.params.id));
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      if (session.requesterId !== userId && session.receiverId !== userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      if (session.status !== "accepted") {
+        return res.status(400).json({ message: "Session is not active" });
+      }
+      const isRequester = session.requesterId === userId;
+      const alreadyCheckedIn = isRequester ? !!session.checkinRequesterAt : !!session.checkinReceiverAt;
+      if (alreadyCheckedIn) {
+        return res.status(400).json({ message: "Already checked in" });
+      }
+      const updated = await storage.checkinSession(Number(req.params.id), isRequester, !!locationVerified);
+      res.json(updated);
+    } catch (err) {
+      console.error("Checkin error:", err);
+      res.status(500).json({ message: "Check-in failed" });
+    }
+  });
+
+  app.post("/api/sessions/:id/no-show", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const session = await storage.getSessionDetail(Number(req.params.id));
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      if (session.requesterId !== userId && session.receiverId !== userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      if (session.status !== "accepted") {
+        return res.status(400).json({ message: "Session is not active" });
+      }
+
+      const isRequester = session.requesterId === userId;
+      const myCheckinTime = isRequester ? session.checkinRequesterAt : session.checkinReceiverAt;
+      const partnerCheckinTime = isRequester ? session.checkinReceiverAt : session.checkinRequesterAt;
+
+      if (!myCheckinTime) {
+        return res.status(400).json({ message: "You must check in before marking a no-show" });
+      }
+      if (partnerCheckinTime) {
+        return res.status(400).json({ message: "Your partner has already checked in" });
+      }
+      const minsSinceCheckin = (Date.now() - new Date(myCheckinTime).getTime()) / 60_000;
+      if (minsSinceCheckin < 20) {
+        return res.status(400).json({ message: "Wait 20 minutes after checking in before marking a no-show" });
+      }
+
+      const noShowUserId = isRequester ? session.receiverId : session.requesterId;
+      await storage.markNoShow(Number(req.params.id), noShowUserId);
+      await storage.incrementNoShowCount(noShowUserId);
+
+      // Send no-show notification (non-blocking)
+      const noShowPlayerInfo = isRequester ? session.receiver : session.requester;
+      const markerInfo = isRequester ? session.requester : session.receiver;
+      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+      if (noShowPlayerInfo.user?.email) {
+        sendNoShowEmail({
+          toEmail: noShowPlayerInfo.user.email,
+          toFirstName: noShowPlayerInfo.user.firstName ?? "there",
+          markedByFirstName: markerInfo.user?.firstName ?? "Your partner",
+          scheduledAt: session.scheduledTime!,
+          courtName: session.court?.name ?? null,
+          sessionId: session.id,
+          baseUrl,
+        }).catch(err => console.error("[email] No-show email failed:", err));
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("No-show error:", err);
+      res.status(500).json({ message: "Failed to mark no-show" });
+    }
+  });
+
+  app.post("/api/sessions/:id/cancel", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const { reason } = req.body;
+      const session = await storage.getSessionDetail(Number(req.params.id));
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      if (session.requesterId !== userId && session.receiverId !== userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      if (session.status !== "accepted") {
+        return res.status(400).json({ message: "Only accepted sessions can be cancelled" });
+      }
+      const updated = await storage.updateHitRequestStatus(Number(req.params.id), "cancelled", {
+        cancelReason: reason || null,
+      });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to cancel session" });
+    }
+  });
+
+  // ── Session ratings ───────────────────────────────────────────────────────────
+
+  const ratingSchema = z.object({
+    reliability: z.number().int().min(1).max(5),
+    skillAccuracy: z.number().int().min(1).max(5),
+    partnerQuality: z.number().int().min(1).max(5),
+    note: z.string().max(140).nullable().optional(),
+  });
+
+  app.get("/api/sessions/:id/my-rating", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const rating = await storage.getMyRating(Number(req.params.id), userId);
+      res.json(rating ?? null);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load rating" });
+    }
+  });
+
+  app.post("/api/sessions/:id/rate", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const sessionId = Number(req.params.id);
+      const session = await storage.getSessionDetail(sessionId);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      if (session.requesterId !== userId && session.receiverId !== userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      if (!["accepted", "no_show"].includes(session.status ?? "")) {
+        return res.status(400).json({ message: "Session cannot be rated" });
+      }
+      if (session.scheduledTime && new Date(session.scheduledTime) > new Date()) {
+        return res.status(400).json({ message: "Session hasn't started yet" });
+      }
+      const existing = await storage.getMyRating(sessionId, userId);
+      if (existing) return res.status(409).json({ message: "Already rated" });
+
+      const input = ratingSchema.parse(req.body);
+      const ratedUserId = session.requesterId === userId ? session.receiverId : session.requesterId;
+      const rating = await storage.submitRating(sessionId, userId, ratedUserId, input);
+      await storage.recalculatePlayerRating(ratedUserId);
+      res.status(201).json(rating);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Rating error:", err);
+      res.status(500).json({ message: "Failed to submit rating" });
+    }
+  });
+
+  // ── Session reminder cron (Render cron job hits this every 30 min) ────────────
+  app.post("/api/cron/session-reminders", async (req, res) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret) {
+      const auth = req.headers.authorization;
+      if (auth !== `Bearer ${secret}`) return res.status(401).json({ message: "Unauthorized" });
+    }
+    try {
+      const now = new Date();
+      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+
+      const windows = [
+        { start: new Date(now.getTime() + 23 * 3600_000), end: new Date(now.getTime() + 25 * 3600_000), type: "24h" as const },
+        { start: new Date(now.getTime() + 50 * 60_000),   end: new Date(now.getTime() + 70 * 60_000),   type: "1h"  as const },
+      ];
+
+      let sent = 0;
+      for (const { start, end, type } of windows) {
+        const sessions = await storage.getSessionsForReminder(start, end, type);
+        for (const req of sessions) {
+          const detail = await storage.getSessionDetail(req.id);
+          if (!detail?.scheduledTime) continue;
+
+          const pairs = [
+            { user: detail.requester, partner: detail.receiver },
+            { user: detail.receiver, partner: detail.requester },
+          ];
+
+          for (const { user, partner } of pairs) {
+            if (!user.user?.email) continue;
+            const age = user.user.dateOfBirth ? calcAge(user.user.dateOfBirth) : 99;
+
+            await sendSessionReminderEmail({
+              toEmail: user.user.email,
+              toFirstName: user.user.firstName ?? "there",
+              partnerFirstName: partner.user?.firstName ?? "",
+              partnerLastName: partner.user?.lastName ?? "",
+              scheduledAt: detail.scheduledTime,
+              courtName: detail.court?.name ?? null,
+              courtAddress: detail.court?.address ?? null,
+              practiceType: detail.practiceType ?? null,
+              sessionId: detail.id,
+              hoursUntil: type === "24h" ? 24 : 1,
+              baseUrl,
+            });
+            sent++;
+
+            if (type === "24h" && age < 18 && user.user.parentEmail) {
+              await sendSessionReminderEmail({
+                toEmail: user.user.parentEmail,
+                toFirstName: "",
+                partnerFirstName: partner.user?.firstName ?? "",
+                partnerLastName: partner.user?.lastName ?? "",
+                scheduledAt: detail.scheduledTime,
+                courtName: detail.court?.name ?? null,
+                courtAddress: detail.court?.address ?? null,
+                practiceType: detail.practiceType ?? null,
+                sessionId: detail.id,
+                hoursUntil: 24,
+                baseUrl,
+                isParentNotification: true,
+                playerFirstName: user.user.firstName ?? "Your child",
+              });
+              sent++;
+            }
+          }
+          await storage.markReminderSent(req.id, type);
+        }
+      }
+
+      // Rating notifications: sessions scheduled 90–8h ago, not yet notified
+      const ratingWindowEnd = new Date(now.getTime() - 90 * 60_000);
+      const ratingWindowStart = new Date(now.getTime() - 8 * 3600_000);
+      const ratingSessions = await storage.getSessionsForRatingNotification(ratingWindowStart, ratingWindowEnd);
+      for (const s of ratingSessions) {
+        const detail = await storage.getSessionDetail(s.id);
+        if (!detail) continue;
+        const pairs = [
+          { user: detail.requester, partner: detail.receiver },
+          { user: detail.receiver, partner: detail.requester },
+        ];
+        for (const { user, partner } of pairs) {
+          if (!user.user?.email) continue;
+          await sendRatingPromptEmail({
+            toEmail: user.user.email,
+            toFirstName: user.user.firstName ?? "there",
+            partnerFirstName: partner.user?.firstName ?? "",
+            partnerLastName: partner.user?.lastName ?? "",
+            sessionId: detail.id,
+            baseUrl,
+          });
+          sent++;
+        }
+        await storage.markRatingNotificationSent(s.id);
+      }
+
+      return res.json({ sent });
+    } catch (err) {
+      console.error("Session reminder cron error:", err);
+      return res.status(500).json({ message: "Cron failed" });
+    }
   });
 
   // ── Courts directory ──────────────────────────────────────────────────────────
@@ -345,6 +672,9 @@ export async function registerRoutes(
         maxDriveMiles: profile.maxDriveMiles ?? null,
         bio: profile.bio ?? null,
         profileCompleteness: profile.profileCompleteness ?? 0,
+        noShowCount: profile.noShowCount ?? 0,
+        sessionCount: profile.sessionCount ?? 0,
+        avgRating: profile.avgRating ?? null,
         // Availability
         availability: theirAvail,
         // Connection signals

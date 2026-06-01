@@ -67,9 +67,13 @@ export const api = {
       method: 'PATCH' as const,
       path: '/api/hit-requests/:id/status',
       input: z.object({
-        status: z.enum(['accepted', 'rejected', 'completed']),
+        status: z.enum(['accepted', 'rejected', 'completed', 'cancelled']),
         scheduledTime: z.string().optional(),
         location: z.string().optional(),
+        courtId: z.number().optional(),
+        practiceType: z.string().optional(),
+        costSplit: z.string().optional(),
+        cancelReason: z.string().optional(),
       }),
       responses: {
         200: z.custom<typeof hitRequests.$inferSelect>(),

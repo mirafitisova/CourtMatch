@@ -59,7 +59,9 @@ export default function SafetyGuidelines() {
       const raw: string = err?.message || "Registration failed";
       try {
         const parsed = JSON.parse(raw.split(": ").slice(1).join(": "));
-        setError(parsed.message || raw);
+        const msg = parsed.message || raw;
+        const detail = parsed.detail ? ` (${parsed.detail})` : "";
+        setError(msg + detail);
       } catch {
         setError(raw);
       }

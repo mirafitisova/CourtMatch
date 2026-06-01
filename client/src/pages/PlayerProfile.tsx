@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Navigation } from "@/components/Navigation";
 import {
   ArrowLeft, BadgeCheck, School, Locate, MapPin,
-  Clock, Users, ChevronRight,
+  Clock, Users, ChevronRight, AlertTriangle, Star,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -34,6 +34,9 @@ interface PlayerDetail {
   maxDriveMiles: number | null;
   bio: string | null;
   profileCompleteness: number;
+  noShowCount: number;
+  sessionCount: number;
+  avgRating: number | null;
   availability: AvailSlot[];
   // Connection signals
   sameSchool: boolean;
@@ -53,6 +56,19 @@ const TIME_LABEL: Record<string, string> = {
 
 function formatLabel(s: string) {
   return s.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function StarDisplay({ value }: { value: number }) {
+  return (
+    <div className="flex gap-0.5">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Star
+          key={star}
+          className={`w-3.5 h-3.5 ${value >= star ? "fill-amber-400 text-amber-400" : value >= star - 0.5 ? "fill-amber-200 text-amber-400" : "text-slate-200"}`}
+        />
+      ))}
+    </div>
+  );
 }
 
 // ── Availability grid (read-only) ─────────────────────────────────────────────
@@ -300,6 +316,25 @@ export default function PlayerProfile() {
                 </div>
               )}
 
+              {/* Session stats */}
+              <div className="flex items-center gap-3 mt-2">
+                {(player.sessionCount ?? 0) === 0 ? (
+                  <span className="text-xs text-slate-400 italic">New player — no ratings yet</span>
+                ) : (
+                  <>
+                    <span className="text-xs text-slate-500">
+                      {player.sessionCount} session{player.sessionCount !== 1 ? "s" : ""} completed
+                    </span>
+                    {player.avgRating != null && (
+                      <span className="flex items-center gap-1.5">
+                        <StarDisplay value={player.avgRating} />
+                        <span className="text-xs font-semibold text-amber-600">{player.avgRating.toFixed(1)}</span>
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+
               {/* Trust badges row */}
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {player.sameSchool && (
@@ -336,6 +371,16 @@ export default function PlayerProfile() {
             <p className="mt-4 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-4">
               {player.bio}
             </p>
+          )}
+
+          {/* No-show warning */}
+          {(player.noShowCount ?? 0) >= 3 && (
+            <div className="mt-4 flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-700">
+                This player has missed sessions recently. Confirm plans carefully before booking.
+              </p>
+            </div>
           )}
 
           {/* CTA */}

@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { db } from "./db";
 import { playerProfiles, weeklyAvailability } from "@shared/models/tennis";
 import { users } from "@shared/models/auth";
-import { eq, ne } from "drizzle-orm";
+import { eq, ne, and } from "drizzle-orm";
 import { isAuthenticated } from "./replit_integrations/auth";
 import { haversineDistanceMiles, resolveCoords } from "@shared/lib/geo";
 
@@ -159,7 +159,9 @@ export function registerSearchRoutes(app: Express) {
       ? resolveCoords(myZip, myProfile.preferredAreas ?? [])
       : null;
 
-    // ── Load all other players ──────────────────────────────────────────────────
+    // ── Load all other active players ──────────────────────────────────────────
+    // Query from users (not playerProfiles) so accounts without a completed
+    // profile still appear in search results.
 
     const otherProfilesRaw = await db
       .select({
@@ -171,9 +173,9 @@ export function registerSearchRoutes(app: Express) {
           zipCode: users.zipCode,
         },
       })
-      .from(playerProfiles)
-      .leftJoin(users, eq(playerProfiles.userId, users.id))
-      .where(ne(playerProfiles.userId, myUserId));
+      .from(users)
+      .leftJoin(playerProfiles, eq(playerProfiles.userId, users.id))
+      .where(and(ne(users.id, myUserId), eq(users.accountStatus, "ACTIVE")));
 
     // Load all availability in one query, index by userId
     const allAvail: AvailSlot[] = await db.select().from(weeklyAvailability);
@@ -188,10 +190,12 @@ export function registerSearchRoutes(app: Express) {
     const scored: (SearchResult & { _score: number })[] = [];
 
     for (const { profile, user } of otherProfilesRaw) {
-      const theirAvail = availByUser.get(profile.userId) ?? [];
+      if (!user?.id) continue;
+      const theirUserId = user.id;
+      const theirAvail = availByUser.get(theirUserId) ?? [];
       const theirCoords = resolveCoords(
         user?.zipCode ?? null,
-        profile.preferredAreas ?? [],
+        profile?.preferredAreas ?? [],
       );
 
       // Distance
@@ -211,48 +215,41 @@ export function registerSearchRoutes(app: Express) {
 
       // Practice type overlap
       const myStyles = myProfile?.playStyles ?? [];
-      const theirStyles = profile.playStyles ?? [];
+      const theirStyles = profile?.playStyles ?? [];
       const sharedStyles = myStyles.filter((s) => theirStyles.includes(s));
 
       // Scores
-      const utrS = scoreUtr(myProfile?.utrRating ?? null, profile.utrRating);
+      const utrS = scoreUtr(myProfile?.utrRating ?? null, profile?.utrRating ?? null);
       const distS = scoreDistance(distanceMiles, maxDistance);
       const availS = scoreAvailability(overlapSlots.length, myAvail.length);
       const styleS = scoreStyles(sharedStyles.length, myStyles.length);
       const totalScore = calcCompatibility(utrS, distS, availS, styleS);
 
       // ── Apply filters ──────────────────────────────────────────────────────
-
-      if (minUtr !== null && (profile.utrRating ?? 0) < minUtr) continue;
-      if (maxUtr !== null && (profile.utrRating ?? 16.5) > maxUtr) continue;
-      if (
-        distanceMiles !== null &&
-        distanceMiles > maxDistance
-      )
-        continue;
-      if (
-        practiceTypes.length > 0 &&
-        !practiceTypes.some((t) => theirStyles.includes(t))
-      )
-        continue;
+      // Only filter by UTR if the player actually has a rating set.
+      const theirUtr = profile?.utrRating ?? null;
+      if (minUtr !== null && theirUtr !== null && theirUtr < minUtr) continue;
+      if (maxUtr !== null && theirUtr !== null && theirUtr > maxUtr) continue;
+      if (distanceMiles !== null && distanceMiles > maxDistance) continue;
+      if (practiceTypes.length > 0 && !practiceTypes.some((t) => theirStyles.includes(t))) continue;
       if (!passesAvailFilter(theirAvail, dayFilter)) continue;
 
       const sameSchool =
-        !!(myProfile?.school && profile.school &&
+        !!(myProfile?.school && profile?.school &&
           myProfile.school.trim().toLowerCase() === profile.school.trim().toLowerCase());
       const nearbyPlayer = distanceMiles !== null && distanceMiles <= 5;
 
       scored.push({
-        userId: profile.userId,
+        userId: theirUserId,
         firstName: user?.firstName ?? null,
         lastInitial: user?.lastName ? user.lastName[0] : null,
-        utrRating: profile.utrRating ?? null,
-        utrVerified: profile.utrVerified ?? false,
-        school: profile.school ?? null,
+        utrRating: theirUtr,
+        utrVerified: profile?.utrVerified ?? false,
+        school: profile?.school ?? null,
         distanceMiles:
           distanceMiles !== null ? Math.round(distanceMiles * 10) / 10 : null,
         playStyles: theirStyles,
-        preferredAreas: profile.preferredAreas ?? [],
+        preferredAreas: profile?.preferredAreas ?? [],
         availabilityOverlapSlots: overlapSlots,
         availabilityOverlapText: formatOverlap(overlapSlots),
         compatibilityScore: totalScore,

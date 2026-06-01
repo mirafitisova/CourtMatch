@@ -74,6 +74,10 @@ export const playerProfiles = pgTable("player_profiles", {
   bio: varchar("bio", { length: 280 }),
   /** Computed 0–100 score; updated whenever profile fields change */
   profileCompleteness: integer("profile_completeness").notNull().default(0),
+  /** Incremented each time this player is marked a no-show */
+  noShowCount: integer("no_show_count").notNull().default(0),
+  sessionCount: integer("session_count").notNull().default(0),
+  avgRating: real("avg_rating"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

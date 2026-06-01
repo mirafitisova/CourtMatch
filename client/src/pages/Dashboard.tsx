@@ -1,11 +1,12 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profiles";
 import { useHitRequests } from "@/hooks/use-hit-requests";
+import { useUpcomingSessions } from "@/hooks/use-sessions";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Trophy, MapPin, Calendar, Clock, ArrowUpRight, ArrowRight, UserCircle } from "lucide-react";
+import { Trophy, MapPin, Calendar, Clock, ArrowRight, UserCircle } from "lucide-react";
 import { Link, Redirect } from "wouter";
 import { format } from "date-fns";
 
@@ -17,6 +18,7 @@ export default function Dashboard() {
 
   const { data: profile, isLoading: profileLoading } = useProfile(user.id);
   const { data: requests, isLoading: requestsLoading } = useHitRequests();
+  const { data: upcomingSessions = [] } = useUpcomingSessions();
 
   if (profileLoading || requestsLoading) {
     return (
@@ -26,7 +28,6 @@ export default function Dashboard() {
     );
   }
 
-  const upcomingHits = requests?.filter(r => r.status === 'accepted').slice(0, 3) || [];
   const pendingRequests = requests?.filter(r => r.status === 'pending' && r.receiverId === user.id).length || 0;
 
   return (
@@ -116,47 +117,53 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            {/* Upcoming Hits Card */}
+            {/* Upcoming Sessions Card */}
             <Card className="border-0 shadow-lg shadow-black/5 rounded-3xl bg-white flex flex-col">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 font-display">
                   <Calendar className="w-5 h-5 text-accent" />
-                  Upcoming Hits
+                  Upcoming Sessions
                 </CardTitle>
               </CardHeader>
               <CardContent className="flex-1">
-                {upcomingHits.length === 0 ? (
+                {upcomingSessions.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground py-8">
                     <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
                       <Calendar className="w-6 h-6 opacity-50" />
                     </div>
-                    <p className="text-sm">No scheduled hits yet.</p>
+                    <p className="text-sm">No upcoming sessions.</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    {upcomingHits.map((hit) => {
-                      const isMeRequester = hit.requesterId === user.id;
-                      const partner = isMeRequester ? hit.receiver : hit.requester;
-                      
-                      return (
-                        <div key={hit.id} className="p-3 rounded-xl bg-muted/50 border hover:border-primary/20 transition-colors">
-                          <div className="flex items-center gap-3 mb-2">
-                            <Avatar className="w-8 h-8">
-                              <AvatarImage src={partner?.user?.profileImageUrl || undefined} />
-                              <AvatarFallback>{partner?.user?.firstName?.[0]}</AvatarFallback>
+                  <div className="space-y-3">
+                    {upcomingSessions.map((session: any) => (
+                      <Link key={session.id} href={`/session/${session.id}`}>
+                        <div className="p-3 rounded-xl bg-muted/50 border hover:border-primary/20 hover:bg-primary/5 transition-colors cursor-pointer">
+                          <div className="flex items-center gap-2.5 mb-1.5">
+                            <Avatar className="w-7 h-7 shrink-0">
+                              <AvatarFallback className="text-xs">{session.partner?.user?.firstName?.[0]}</AvatarFallback>
                             </Avatar>
-                            <span className="font-semibold text-sm">{partner?.user?.firstName} {partner?.user?.lastName}</span>
+                            <span className="font-semibold text-sm">
+                              {session.partner?.user?.firstName} {session.partner?.user?.lastName}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Clock className="w-3 h-3" />
-                            {hit.scheduledTime ? format(new Date(hit.scheduledTime), "MMM d, h:mm a") : "TBD"}
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {format(new Date(session.scheduledTime), "MMM d, h:mm a")}
+                            </span>
+                            {(session.court?.name || session.location) && (
+                              <span className="flex items-center gap-1 truncate">
+                                <MapPin className="w-3 h-3 shrink-0" />
+                                {session.court?.name ?? session.location}
+                              </span>
+                            )}
                           </div>
                         </div>
-                      );
-                    })}
-                    <Link href="/requests" className="block text-center mt-4">
+                      </Link>
+                    ))}
+                    <Link href="/requests" className="block text-center mt-2">
                       <Button variant="ghost" size="sm" className="text-primary">
-                        View all <ArrowRight className="w-3 h-3 ml-1" />
+                        All requests <ArrowRight className="w-3 h-3 ml-1" />
                       </Button>
                     </Link>
                   </div>

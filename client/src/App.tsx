@@ -21,6 +21,8 @@ import ProfileSetupWizard from "@/pages/ProfileSetupWizard";
 import Search from "@/pages/Search";
 import PlayerProfile from "@/pages/PlayerProfile";
 import Courts from "@/pages/Courts";
+import SessionDetail from "@/pages/SessionDetail";
+import RateSession from "@/pages/RateSession";
 
 function Router() {
   const { user, isLoading } = useAuth();
@@ -40,6 +42,8 @@ function Router() {
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/search" component={Search} />
       <Route path="/courts" component={Courts} />
+      <Route path="/session/:id" component={SessionDetail} />
+      <Route path="/session/:id/rate" component={RateSession} />
       <Route path="/player/:id" component={PlayerProfile} />
       <Route path="/players" component={FindPlayers} />
       <Route path="/requests" component={Requests} />
