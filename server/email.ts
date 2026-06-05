@@ -74,10 +74,7 @@ interface VerificationEmailOptions {
 }
 
 export async function sendVerificationEmail(opts: VerificationEmailOptions) {
-  if (!isConfigured()) {
-console.error("[email] Not configured - skipping send");
-  return;
-}
+  if (!isConfigured()) { console.error("[email] Not configured - skipping send"); return; }
   const verificationUrl = `${opts.baseUrl}/api/auth/verify-email/${opts.verificationToken}`;
 
   const html = wrapper(`
