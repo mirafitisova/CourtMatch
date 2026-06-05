@@ -1,8 +1,10 @@
+
+
 import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const FROM = "CourtMatch <noreply@resend.dev>";
+const FROM = "CourtMatch <noreply@courtmatch.org>";
 
 function isConfigured() {
   if (!process.env.RESEND_API_KEY) {
@@ -40,7 +42,8 @@ interface HitRequestEmailOptions {
 }
 
 export async function sendHitRequestEmail(opts: HitRequestEmailOptions) {
-  if (!isConfigured()) return;
+  if (!isConfigured()) { console.error("[email] Not configured - 
+skipping send"); return; }
   const { toEmail, fromFirstName, fromLastName, fromUtr, message } = opts;
 
   const html = wrapper(`
@@ -71,7 +74,10 @@ interface VerificationEmailOptions {
 }
 
 export async function sendVerificationEmail(opts: VerificationEmailOptions) {
-  if (!isConfigured()) return;
+  if (!isConfigured()) {
+console.error("[email] Not configured - skipping send");
+  return;
+}
   const verificationUrl = `${opts.baseUrl}/api/auth/verify-email/${opts.verificationToken}`;
 
   const html = wrapper(`
