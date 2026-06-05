@@ -42,8 +42,7 @@ interface HitRequestEmailOptions {
 }
 
 export async function sendHitRequestEmail(opts: HitRequestEmailOptions) {
-  if (!isConfigured()) { console.error("[email] Not configured - 
-skipping send"); return; }
+  if (!isConfigured()) { console.error("[email] Not configured - skipping send"); return; }
   const { toEmail, fromFirstName, fromLastName, fromUtr, message } = opts;
 
   const html = wrapper(`
