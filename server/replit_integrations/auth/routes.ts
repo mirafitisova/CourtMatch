@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import type { Express } from "express";
 import rateLimit from "express-rate-limit";
 import { authStorage } from "./storage";
+import { storage } from "../../storage";
 import { isAuthenticated } from "./replitAuth";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
@@ -104,6 +105,9 @@ export function registerAuthRoutes(app: Express): void {
         accountStatus: initialStatus,
         guidelinesAcceptedAt: new Date(),
       });
+
+		// Create a profile row so user appears in FindPlayers
+		await storage.createProfile({ userId: user.id });
 
       if (!emailEnabled) {
         // No email provider — account is active immediately.
