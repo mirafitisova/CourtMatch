@@ -12,7 +12,7 @@ import {
   type WeeklyAvailability, type InsertWeeklyAvailability,
 } from "@shared/models/tennis";
 import { users } from "@shared/models/auth";
-import { eq, or, and, desc, gte, lte, isNull, isNotNull } from "drizzle-orm";
+import { eq, or, and, desc, gte, lte, isNull, isNotNull, count } from "drizzle-orm";
 import { calculateStreak } from "@shared/lib/stats";
 
 export interface PlayerStats {
@@ -95,6 +95,7 @@ export interface IStorage {
   // Stats
   getPlayerStats(userId: string): Promise<PlayerStats>;
   getSessionHistory(userId: string): Promise<SessionHistoryItem[]>;
+  getPublicStats(): Promise<{ playerCount: number; sessionCount: number; courtCount: number }>;
 }
 
 export interface HitRequestExtra {
@@ -434,6 +435,19 @@ export class DatabaseStorage implements IStorage {
 
   async markRatingNotificationSent(id: number): Promise<void> {
     await db.update(hitRequests).set({ ratingNotifiedAt: new Date() }).where(eq(hitRequests.id, id));
+  }
+
+  async getPublicStats(): Promise<{ playerCount: number; sessionCount: number; courtCount: number }> {
+    const [players, sessions, courtList] = await Promise.all([
+      db.select({ n: count() }).from(profiles),
+      db.select({ n: count() }).from(hitRequests).where(eq(hitRequests.status, 'completed')),
+      db.select({ n: count() }).from(courts),
+    ]);
+    return {
+      playerCount: players[0]?.n ?? 0,
+      sessionCount: sessions[0]?.n ?? 0,
+      courtCount: courtList[0]?.n ?? 0,
+    };
   }
 
   async getPlayerStats(userId: string): Promise<PlayerStats> {

@@ -76,6 +76,16 @@ export async function registerRoutes(
   registerAdminRoutes(app);
   registerSearchRoutes(app);
 
+  // ── Public stats (no auth — used by landing page) ────────────────────────────
+  app.get("/api/public/stats", async (_req, res) => {
+    try {
+      const stats = await storage.getPublicStats();
+      res.json(stats);
+    } catch (err) {
+      res.json({ playerCount: 0, sessionCount: 0, courtCount: 0 });
+    }
+  });
+
   // Player Profile (extended tennis schema)
   app.get("/api/player-profile", isAuthenticated, async (req, res) => {
     const userId = (req.session as any).userId;
