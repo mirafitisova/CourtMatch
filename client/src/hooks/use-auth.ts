@@ -8,6 +8,8 @@ type User = {
   lastName: string | null;
   profileImageUrl: string | null;
   isAdmin: boolean;
+  inviteCode: string | null;
+  practiceCredits: number;
   createdAt: string | null;
   updatedAt: string | null;
 };

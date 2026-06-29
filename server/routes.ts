@@ -76,6 +76,18 @@ export async function registerRoutes(
   registerAdminRoutes(app);
   registerSearchRoutes(app);
 
+  // ── Public invite lookup (no auth — used by /invite/:code page) ─────────────
+  app.get("/api/invite/:code", async (req, res) => {
+    try {
+      const { authStorage } = await import("./replit_integrations/auth/storage");
+      const inviter = await authStorage.getUserByInviteCode(req.params.code);
+      if (!inviter) return res.status(404).json({ message: "Invite link not found" });
+      res.json({ firstName: inviter.firstName, inviteCode: inviter.inviteCode });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to look up invite" });
+    }
+  });
+
   // ── Public stats (no auth — used by landing page) ────────────────────────────
   app.get("/api/public/stats", async (_req, res) => {
     try {
@@ -246,8 +258,37 @@ export async function registerRoutes(
       });
       if (!updated) return res.status(404).json({ message: "Request not found" });
       res.json(updated);
+
+      // Non-blocking: check for referral credit awards when a session is completed
+      if (status === 'completed') {
+        storage.checkAndAwardReferralCredits(Number(req.params.id)).catch(err =>
+          console.error("[credits] Referral credit check failed:", err)
+        );
+      }
     } catch (err) {
       res.status(400).json({ message: "Invalid update" });
+    }
+  });
+
+  // ── Credit notifications ──────────────────────────────────────────────────────
+  app.get("/api/credits/notifications", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const notifications = await storage.getUnnotifiedCredits(userId);
+      res.json(notifications);
+    } catch (err) {
+      res.json([]);
+    }
+  });
+
+  app.post("/api/credits/notifications/mark-read", isAuthenticated, async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids)) return res.status(400).json({ message: "ids must be an array" });
+      await storage.markCreditsNotified(ids);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed" });
     }
   });
 

@@ -1,4 +1,8 @@
 import { randomBytes } from "crypto";
+
+function generateInviteCode(): string {
+  return randomBytes(4).toString("hex").toUpperCase();
+}
 import type { Express } from "express";
 import rateLimit from "express-rate-limit";
 import { authStorage } from "./storage";
@@ -35,6 +39,7 @@ const registerSchema = z.object({
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date of birth"),
   zipCode: z.string().regex(/^\d{5}$/, "Zip code must be 5 digits"),
   parentEmail: z.string().email("Invalid parent/guardian email").optional(),
+  referralCode: z.string().optional(),
 });
 
 function calculateAge(dob: string): number {
@@ -94,6 +99,13 @@ export function registerAuthRoutes(app: Express): void {
       // activate accounts immediately so users can sign in right away.
       const initialStatus = emailEnabled ? "PENDING_EMAIL" : "ACTIVE";
 
+      // Resolve referrer from optional referral code
+      let referredBy: string | null = null;
+      if (input.referralCode) {
+        const referrer = await authStorage.getUserByInviteCode(input.referralCode);
+        if (referrer) referredBy = referrer.id;
+      }
+
       const user = await authStorage.createUser({
         email: input.email,
         passwordHash,
@@ -104,6 +116,8 @@ export function registerAuthRoutes(app: Express): void {
         parentEmail: input.parentEmail ?? null,
         accountStatus: initialStatus,
         guidelinesAcceptedAt: new Date(),
+        inviteCode: generateInviteCode(),
+        referredBy,
       });
 
 		// Create a profile row so user appears in FindPlayers

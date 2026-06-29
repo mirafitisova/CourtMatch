@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, real, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, real, varchar, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -77,6 +77,18 @@ export const courtReviews = pgTable("court_reviews", {
   playedAt: timestamp("played_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const creditTransactions = pgTable("credit_transactions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  amount: integer("amount").notNull(),
+  reason: varchar("reason").notNull(),
+  referredUserId: varchar("referred_user_id"),
+  notifiedAt: timestamp("notified_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type CreditTransaction = typeof creditTransactions.$inferSelect;
 
 // === RELATIONS ===
 export const profilesRelations = relations(profiles, ({ one }) => ({

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { format, differenceInYears } from "date-fns";
 import { Trophy, CalendarIcon, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
@@ -16,6 +16,8 @@ export const SIGNUP_STORAGE_KEY = "courtmatch_pending_signup";
 
 export default function SignupPage() {
   const [, navigate] = useLocation();
+  const search = useSearch();
+  const referralCode = new URLSearchParams(search).get("ref") ?? "";
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -89,6 +91,7 @@ export default function SignupPage() {
         dateOfBirth: format(dob!, "yyyy-MM-dd"),
         zipCode,
         ...(needsParentEmail ? { parentEmail } : {}),
+        ...(referralCode ? { referralCode } : {}),
       })
     );
     navigate("/safety-guidelines");
@@ -110,7 +113,16 @@ export default function SignupPage() {
         <Card>
           <CardHeader className="text-center">
             <CardTitle>Create your account</CardTitle>
-            <CardDescription>Join CourtMatch to find hitting partners near you</CardDescription>
+            <CardDescription>
+              {referralCode
+                ? "You were invited! Create your account to get started."
+                : "Join JuniorHit to find hitting partners near you"}
+            </CardDescription>
+            {referralCode && (
+              <div className="mt-3 rounded-xl bg-primary/8 border border-primary/20 px-4 py-2.5 text-sm text-primary font-medium">
+                🎾 Joining via an invite link
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-5" noValidate>

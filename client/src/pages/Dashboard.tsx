@@ -1,15 +1,21 @@
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profiles";
 import { useHitRequests } from "@/hooks/use-hit-requests";
 import { useUpcomingSessions } from "@/hooks/use-sessions";
 import { useMyStats } from "@/hooks/use-stats";
+import { useCreditNotifications, useMarkCreditsNotified } from "@/hooks/use-invite";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Trophy, MapPin, Calendar, Clock, ArrowRight, UserCircle, Flame, History } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
+import { Trophy, MapPin, Calendar, Clock, ArrowRight, UserCircle, Flame, History, Copy, MessageSquare, Coins, CheckCheck } from "lucide-react";
 import { Link, Redirect } from "wouter";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -21,6 +27,42 @@ export default function Dashboard() {
   const { data: requests, isLoading: requestsLoading } = useHitRequests();
   const { data: upcomingSessions = [] } = useUpcomingSessions();
   const { data: stats } = useMyStats();
+  const { data: creditNotifs = [] } = useCreditNotifications();
+  const markNotified = useMarkCreditsNotified();
+  const { toast } = useToast();
+
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const inviteLink = user.inviteCode
+    ? `${window.location.origin}/invite/${user.inviteCode}`
+    : null;
+
+  // Show toast for unread credit notifications
+  useEffect(() => {
+    if (creditNotifs.length === 0) return;
+    creditNotifs.forEach(n => {
+      toast({
+        title: `You earned ${n.amount} credits! 🎾`,
+        description: `${n.referredUserFirstName ?? "Your friend"} completed their first session.`,
+      });
+    });
+    markNotified.mutate(creditNotifs.map(n => n.id));
+  }, [creditNotifs.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function copyInviteLink() {
+    if (!inviteLink) return;
+    navigator.clipboard.writeText(inviteLink).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  function shareViaSms() {
+    if (!inviteLink) return;
+    const msg = encodeURIComponent(`I'm using JuniorHit to find hitting partners for tennis. Join me! ${inviteLink}`);
+    window.open(`sms:?body=${msg}`, "_blank");
+  }
 
   if (profileLoading || requestsLoading) {
     return (
@@ -49,11 +91,27 @@ export default function Dashboard() {
                 Ready to find your next hitting partner?
               </p>
             </div>
-            <Link href="/players">
-              <Button className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20">
-                Find Players
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Credits badge */}
+              {user.practiceCredits > 0 && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/15 border border-accent/25 rounded-full text-sm font-semibold text-primary">
+                  <Coins className="w-4 h-4 text-accent" />
+                  {user.practiceCredits} credits
+                </div>
+              )}
+              <Button
+                variant="outline"
+                className="gap-2 rounded-xl border-primary/20 text-primary hover:bg-primary/5"
+                onClick={() => setInviteOpen(true)}
+              >
+                🎾 Invite a Friend
               </Button>
-            </Link>
+              <Link href="/players">
+                <Button className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20">
+                  Find Players
+                </Button>
+              </Link>
+            </div>
           </div>
 
           {/* Soft profile completion prompt */}
@@ -204,6 +262,68 @@ export default function Dashboard() {
           </div>
         </div>
       </main>
+
+      {/* ── Invite modal ─────────────────────────────────────────────────────── */}
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl flex items-center gap-2">
+              🎾 Invite a Friend
+            </DialogTitle>
+            <DialogDescription>
+              Share your invite link. You'll earn <strong>50 practice credits</strong> when a friend completes their first session.
+            </DialogDescription>
+          </DialogHeader>
+
+          {inviteLink ? (
+            <div className="space-y-4 mt-2">
+              {/* Invite link display */}
+              <div className="flex items-center gap-2 bg-muted/60 rounded-xl px-3 py-2.5">
+                <span className="text-xs text-muted-foreground truncate flex-1 font-mono">{inviteLink}</span>
+              </div>
+
+              {/* Action buttons */}
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  variant="outline"
+                  className="rounded-xl gap-2"
+                  onClick={copyInviteLink}
+                >
+                  {copied ? (
+                    <><CheckCheck className="w-4 h-4 text-green-600" /> Copied!</>
+                  ) : (
+                    <><Copy className="w-4 h-4" /> Copy link</>
+                  )}
+                </Button>
+                <Button
+                  className="rounded-xl gap-2"
+                  onClick={shareViaSms}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Share via text
+                </Button>
+              </div>
+
+              {/* Credits earned */}
+              {user.practiceCredits > 0 && (
+                <div className="flex items-center gap-2 bg-accent/10 rounded-xl px-4 py-3">
+                  <Coins className="w-5 h-5 text-accent shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-primary">
+                      {user.practiceCredits} credits earned
+                    </p>
+                    <p className="text-xs text-muted-foreground">From successful referrals</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground mt-2">
+              Your invite link is being generated — try again in a moment.
+            </p>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

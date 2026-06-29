@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
 
 export const sessions = pgTable(
   "sessions",
@@ -24,6 +24,10 @@ export const users = pgTable("users", {
   accountStatus: varchar("account_status").notNull().default("ACTIVE"),
   isAdmin: boolean("is_admin").notNull().default(false),
   guidelinesAcceptedAt: timestamp("guidelines_accepted_at"),
+  // Invite / credits
+  inviteCode: varchar("invite_code").unique(),
+  referredBy: varchar("referred_by"),
+  practiceCredits: integer("practice_credits").notNull().default(0),
   // Email verification
   emailVerificationToken: varchar("email_verification_token"),
   emailVerificationExpiry: timestamp("email_verification_expiry"),

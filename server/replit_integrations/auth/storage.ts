@@ -5,6 +5,7 @@ import { and, eq, isNotNull, lte, gte } from "drizzle-orm";
 export interface IAuthStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByInviteCode(code: string): Promise<User | undefined>;
   createUser(user: UpsertUser): Promise<User>;
   setEmailVerificationToken(userId: string, token: string, expiry: Date): Promise<void>;
   getUserByEmailVerificationToken(token: string): Promise<User | undefined>;
@@ -23,6 +24,11 @@ class AuthStorage implements IAuthStorage {
 
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async getUserByInviteCode(code: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.inviteCode, code.toUpperCase()));
     return user;
   }
 

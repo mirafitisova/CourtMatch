@@ -1,10 +1,10 @@
 import { db } from "./db";
 import {
-  profiles, hitRequests, sessionMessages, hitRequestRatings, courtReviews,
+  profiles, hitRequests, sessionMessages, hitRequestRatings, courtReviews, creditTransactions,
   type Profile, type InsertProfile, type UpdateProfileRequest,
   type HitRequest, type InsertHitRequest, type UpdateHitRequestStatus,
   type ProfileWithUser, type HitRequestWithProfiles, type SessionMessage,
-  type HitRequestRating, type CourtReview, type InsertCourtReview,
+  type HitRequestRating, type CourtReview, type InsertCourtReview, type CreditTransaction,
 } from "@shared/schema";
 import {
   playerProfiles, weeklyAvailability, courts,
@@ -12,7 +12,7 @@ import {
   type WeeklyAvailability, type InsertWeeklyAvailability,
 } from "@shared/models/tennis";
 import { users } from "@shared/models/auth";
-import { eq, or, and, desc, gte, lte, isNull, isNotNull, count } from "drizzle-orm";
+import { eq, or, and, desc, gte, lte, isNull, isNotNull, count, sql } from "drizzle-orm";
 import { calculateStreak } from "@shared/lib/stats";
 
 export interface PlayerStats {
@@ -101,6 +101,11 @@ export interface IStorage {
   submitCourtReview(data: InsertCourtReview): Promise<CourtReview>;
   getMyCourtReview(hitRequestId: number, userId: string): Promise<CourtReview | undefined>;
   getCourtReviewStats(courtId: number): Promise<CourtReviewStats>;
+
+  // Credits & referrals
+  checkAndAwardReferralCredits(hitRequestId: number): Promise<void>;
+  getUnnotifiedCredits(userId: string): Promise<Array<CreditTransaction & { referredUserFirstName: string | null }>>;
+  markCreditsNotified(ids: number[]): Promise<void>;
 }
 
 export interface CourtReviewStats {
@@ -521,6 +526,61 @@ export class DatabaseStorage implements IStorage {
       bestTimes,
       recentExcerpts,
     };
+  }
+
+  async checkAndAwardReferralCredits(hitRequestId: number): Promise<void> {
+    const [req] = await db.select().from(hitRequests).where(eq(hitRequests.id, hitRequestId)).limit(1);
+    if (!req || req.status !== 'completed') return;
+
+    for (const participantId of [req.requesterId, req.receiverId]) {
+      // Get the user's referredBy
+      const [participant] = await db.select({ referredBy: users.referredBy })
+        .from(users).where(eq(users.id, participantId)).limit(1);
+      if (!participant?.referredBy) continue;
+
+      // Check if this is their first completed session
+      const completedCount = await db.select({ n: count() })
+        .from(hitRequests)
+        .where(and(
+          or(eq(hitRequests.requesterId, participantId), eq(hitRequests.receiverId, participantId)),
+          eq(hitRequests.status, 'completed'),
+        ));
+      if ((completedCount[0]?.n ?? 0) !== 1) continue;
+
+      // Try to insert a credit transaction (UNIQUE constraint prevents double-crediting)
+      try {
+        await db.insert(creditTransactions).values({
+          userId: participant.referredBy,
+          amount: 50,
+          reason: 'referral_first_session',
+          referredUserId: participantId,
+        });
+        // Increment referrer's credit balance
+        await db.update(users)
+          .set({ practiceCredits: sql`practice_credits + 50` })
+          .where(eq(users.id, participant.referredBy));
+      } catch {
+        // Duplicate key = already credited, ignore
+      }
+    }
+  }
+
+  async getUnnotifiedCredits(userId: string): Promise<Array<CreditTransaction & { referredUserFirstName: string | null }>> {
+    const rows = await db.select({
+      tx: creditTransactions,
+      firstName: users.firstName,
+    })
+      .from(creditTransactions)
+      .leftJoin(users, eq(creditTransactions.referredUserId, users.id))
+      .where(and(eq(creditTransactions.userId, userId), isNull(creditTransactions.notifiedAt)));
+    return rows.map(r => ({ ...r.tx, referredUserFirstName: r.firstName ?? null }));
+  }
+
+  async markCreditsNotified(ids: number[]): Promise<void> {
+    if (ids.length === 0) return;
+    await db.update(creditTransactions)
+      .set({ notifiedAt: new Date() })
+      .where(sql`id = ANY(${ids})`);
   }
 
   async getPublicStats(): Promise<{ playerCount: number; sessionCount: number; courtCount: number }> {
