@@ -1,6 +1,8 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile, useUpdateProfile } from "@/hooks/use-profiles";
 import { useMyStats } from "@/hooks/use-stats";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertProfileSchema } from "@shared/schema";
@@ -9,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Navigation } from "@/components/Navigation";
-import { Trophy, MapPin, User, Star, History } from "lucide-react";
+import { Trophy, MapPin, User, Star, History, Bell } from "lucide-react";
 import { z } from "zod";
 import { Link, Redirect, useLocation } from "wouter";
 import { useEffect } from "react";
@@ -31,6 +33,19 @@ export default function ProfileSetup() {
   const { data: profile, isLoading } = useProfile(user?.id || "");
   const updateProfile = useUpdateProfile();
   const { data: stats } = useMyStats();
+  const qc = useQueryClient();
+
+  const { data: emailPrefs } = useQuery<{ emailSessionReminders: boolean; emailReengagement: boolean; emailMarketing: boolean }>({
+    queryKey: ["/api/email-preferences"],
+    queryFn: () => apiRequest("GET", "/api/email-preferences").then(r => r.json()),
+    enabled: !!user,
+  });
+
+  const updateEmailPrefs = useMutation({
+    mutationFn: (prefs: Partial<typeof emailPrefs>) =>
+      apiRequest("PUT", "/api/email-preferences", prefs).then(r => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/email-preferences"] }),
+  });
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -213,6 +228,44 @@ export default function ProfileSetup() {
               </CardContent>
             </Card>
           )}
+          {/* Email preferences card */}
+          <Card className="border-0 shadow-xl shadow-black/5 rounded-3xl bg-white">
+            <CardHeader className="pb-2 border-b">
+              <CardTitle className="text-lg font-display font-semibold text-primary flex items-center gap-2">
+                <Bell className="w-5 h-5 text-accent" /> Email Notifications
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-5 space-y-4">
+              {[
+                { key: "emailSessionReminders" as const, label: "Session reminders", desc: "24h and 1h reminders before your sessions" },
+                { key: "emailReengagement" as const, label: "Re-engagement reminders", desc: "Nudges when you haven't hit in a while, streak warnings" },
+                { key: "emailMarketing" as const, label: "Tournament & updates", desc: "Broadcast messages and tournament prep prompts" },
+              ].map(({ key, label, desc }) => (
+                <label key={key} className="flex items-center justify-between gap-4 cursor-pointer select-none">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">{label}</p>
+                    <p className="text-xs text-muted-foreground">{desc}</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={emailPrefs?.[key] ?? true}
+                    onClick={() => {
+                      if (!emailPrefs) return;
+                      updateEmailPrefs.mutate({ [key]: !emailPrefs[key] });
+                    }}
+                    className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors focus:outline-none ${
+                      (emailPrefs?.[key] ?? true) ? "bg-primary" : "bg-slate-200"
+                    }`}
+                  >
+                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                      (emailPrefs?.[key] ?? true) ? "translate-x-5" : "translate-x-0.5"
+                    }`} />
+                  </button>
+                </label>
+              ))}
+            </CardContent>
+          </Card>
         </div>
       </main>
     </div>

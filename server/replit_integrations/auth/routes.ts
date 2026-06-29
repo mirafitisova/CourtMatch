@@ -118,6 +118,7 @@ export function registerAuthRoutes(app: Express): void {
         guidelinesAcceptedAt: new Date(),
         inviteCode: generateInviteCode(),
         referredBy,
+        unsubscribeToken: randomBytes(16).toString("hex").toUpperCase(),
       });
 
 		// Create a profile row so user appears in FindPlayers

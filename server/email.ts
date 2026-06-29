@@ -299,3 +299,160 @@ export async function sendParentConsentEmail(opts: ParentConsentEmailOptions) {
     console.error("[email] Failed to send parent consent email:", err);
   }
 }
+
+// ── Re-engagement emails ─────────────────────────────────────────────────────
+
+function unsubscribeLink(baseUrl: string, token: string, type: string) {
+  return `${baseUrl}/unsubscribe?token=${token}&type=${type}`;
+}
+
+function footerWithUnsub(baseUrl: string, token: string) {
+  return `
+    <p style="color:#9ca3af;font-size:12px;text-align:center;margin-top:24px;line-height:1.6;">
+      JuniorHit · Find your next hitting partner<br>
+      <a href="${unsubscribeLink(baseUrl, token, "reengagement")}" style="color:#9ca3af;text-decoration:underline;">
+        Unsubscribe from activity reminders
+      </a>
+      &nbsp;·&nbsp;
+      <a href="${unsubscribeLink(baseUrl, token, "all")}" style="color:#9ca3af;text-decoration:underline;">
+        Unsubscribe from all emails
+      </a>
+    </p>`;
+}
+
+// ── 5-day: "Your racket misses you" ──────────────────────────────────────────
+export async function sendReengagement5d(opts: {
+  toEmail: string; firstName: string; nearbyCount: number;
+  baseUrl: string; unsubscribeToken: string;
+}) {
+  if (!isConfigured()) return;
+  const { firstName, nearbyCount, baseUrl, unsubscribeToken } = opts;
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#f9fafb;">
+      <div style="background:white;border-radius:16px;padding:32px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+        <h1 style="color:#2D7A4F;font-size:22px;margin:0 0 8px;">🎾 Your racket misses you</h1>
+        <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px;">
+          Hi ${firstName}, it looks like you haven't hit in a few days.
+        </p>
+        <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px;">
+          <strong>${nearbyCount > 0 ? `${nearbyCount} players near you are available this weekend.` : "Players near you are looking for hitting partners."}</strong>
+          Find a hitting partner and get back on the court!
+        </p>
+        ${btn(`${baseUrl}/`, "Find a Hitting Partner")}
+      </div>
+      ${footerWithUnsub(baseUrl, unsubscribeToken)}
+    </div>`;
+  try {
+    await resend.emails.send({ from: FROM, to: opts.toEmail, subject: "Your racket misses you 🎾", html });
+  } catch (err) { console.error("[email] 5d reengagement failed:", err); }
+}
+
+// ── 10-day: "Streak at risk" ──────────────────────────────────────────────────
+export async function sendReengagement10d(opts: {
+  toEmail: string; firstName: string; streak: number;
+  baseUrl: string; unsubscribeToken: string;
+}) {
+  if (!isConfigured()) return;
+  const { firstName, streak, baseUrl, unsubscribeToken } = opts;
+  const streakText = streak > 0
+    ? `Your <strong>${streak}-week hitting streak</strong> is at risk!`
+    : "It's been a while since your last session!";
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#f9fafb;">
+      <div style="background:white;border-radius:16px;padding:32px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+        <h1 style="color:#d97706;font-size:22px;margin:0 0 8px;">⚡ It's been a while</h1>
+        <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px;">Hi ${firstName},</p>
+        <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px;">
+          ${streakText} Book a session this week to keep your momentum going.
+        </p>
+        ${btn(`${baseUrl}/`, "Book a Session")}
+      </div>
+      ${footerWithUnsub(baseUrl, unsubscribeToken)}
+    </div>`;
+  try {
+    await resend.emails.send({ from: FROM, to: opts.toEmail, subject: "It's been a while — your streak is at risk ⚡", html });
+  } catch (err) { console.error("[email] 10d reengagement failed:", err); }
+}
+
+// ── 14-day: "We miss you" ─────────────────────────────────────────────────────
+export async function sendReengagement14d(opts: {
+  toEmail: string; firstName: string; newPlayersCount: number;
+  baseUrl: string; unsubscribeToken: string;
+}) {
+  if (!isConfigured()) return;
+  const { firstName, newPlayersCount, baseUrl, unsubscribeToken } = opts;
+  const newText = newPlayersCount > 0
+    ? `<strong>${newPlayersCount} new players</strong> joined in your area since your last session.`
+    : "New players have joined in your area since your last session.";
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#f9fafb;">
+      <div style="background:white;border-radius:16px;padding:32px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+        <h1 style="color:#2D7A4F;font-size:22px;margin:0 0 8px;">🌟 We miss you at JuniorHit</h1>
+        <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px;">Hi ${firstName},</p>
+        <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px;">
+          ${newText} Come back and find your next hitting partner.
+        </p>
+        ${btn(`${baseUrl}/`, "Come Back and Hit")}
+      </div>
+      ${footerWithUnsub(baseUrl, unsubscribeToken)}
+    </div>`;
+  try {
+    await resend.emails.send({ from: FROM, to: opts.toEmail, subject: "We miss you at JuniorHit 🌟", html });
+  } catch (err) { console.error("[email] 14d reengagement failed:", err); }
+}
+
+// ── Sunday streak warning ─────────────────────────────────────────────────────
+export async function sendStreakWarning(opts: {
+  toEmail: string; firstName: string; streak: number;
+  baseUrl: string; unsubscribeToken: string;
+}) {
+  if (!isConfigured()) return;
+  const { firstName, streak, baseUrl, unsubscribeToken } = opts;
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#f9fafb;">
+      <div style="background:white;border-radius:16px;padding:32px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+        <h1 style="color:#dc2626;font-size:22px;margin:0 0 8px;">🔥 Streak ending tomorrow!</h1>
+        <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px;">Hi ${firstName},</p>
+        <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px;">
+          Your <strong>${streak}-week hitting streak ends tonight at midnight!</strong>
+          Book a session today to keep it alive.
+        </p>
+        ${btn(`${baseUrl}/`, "Book a Session Now")}
+      </div>
+      ${footerWithUnsub(baseUrl, unsubscribeToken)}
+    </div>`;
+  try {
+    await resend.emails.send({ from: FROM, to: opts.toEmail, subject: `🔥 Your ${streak}-week streak ends tonight!`, html });
+  } catch (err) { console.error("[email] Streak warning failed:", err); }
+}
+
+// ── Broadcast / tournament notification ──────────────────────────────────────
+export async function sendBroadcastEmail(opts: {
+  toEmail: string; firstName: string; title: string; body: string;
+  baseUrl: string; unsubscribeToken: string;
+}) {
+  if (!isConfigured()) return;
+  const { firstName, title, body, baseUrl, unsubscribeToken } = opts;
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#f9fafb;">
+      <div style="background:white;border-radius:16px;padding:32px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+        <h1 style="color:#2D7A4F;font-size:22px;margin:0 0 16px;">🎾 ${title}</h1>
+        <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px;">Hi ${firstName},</p>
+        <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px;">${body}</p>
+        ${btn(`${baseUrl}/`, "Open JuniorHit")}
+      </div>
+      <p style="color:#9ca3af;font-size:12px;text-align:center;margin-top:24px;line-height:1.6;">
+        JuniorHit · Find your next hitting partner<br>
+        <a href="${unsubscribeLink(baseUrl, unsubscribeToken, "marketing")}" style="color:#9ca3af;text-decoration:underline;">
+          Unsubscribe from tournament and marketing emails
+        </a>
+        &nbsp;·&nbsp;
+        <a href="${unsubscribeLink(baseUrl, unsubscribeToken, "all")}" style="color:#9ca3af;text-decoration:underline;">
+          Unsubscribe from all emails
+        </a>
+      </p>
+    </div>`;
+  try {
+    await resend.emails.send({ from: FROM, to: opts.toEmail, subject: title, html });
+  } catch (err) { console.error("[email] Broadcast failed:", err); }
+}

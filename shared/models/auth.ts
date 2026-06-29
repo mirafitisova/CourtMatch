@@ -28,6 +28,11 @@ export const users = pgTable("users", {
   inviteCode: varchar("invite_code").unique(),
   referredBy: varchar("referred_by"),
   practiceCredits: integer("practice_credits").notNull().default(0),
+  // Email preferences
+  emailSessionReminders: boolean("email_session_reminders").notNull().default(true),
+  emailReengagement: boolean("email_reengagement").notNull().default(true),
+  emailMarketing: boolean("email_marketing").notNull().default(true),
+  unsubscribeToken: varchar("unsubscribe_token").unique(),
   // Email verification
   emailVerificationToken: varchar("email_verification_token"),
   emailVerificationExpiry: timestamp("email_verification_expiry"),

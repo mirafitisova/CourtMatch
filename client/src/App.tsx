@@ -25,6 +25,8 @@ import SessionDetail from "@/pages/SessionDetail";
 import RateSession from "@/pages/RateSession";
 import Sessions from "@/pages/Sessions";
 import InvitePage from "@/pages/InvitePage";
+import UnsubscribePage from "@/pages/UnsubscribePage";
+import NotificationsAdmin from "@/pages/admin/NotificationsAdmin";
 
 function Router() {
   const { user, isLoading } = useAuth();
@@ -51,6 +53,8 @@ function Router() {
       <Route path="/requests" component={Requests} />
       <Route path="/sessions" component={Sessions} />
       <Route path="/invite/:code" component={InvitePage} />
+      <Route path="/unsubscribe" component={UnsubscribePage} />
+      <Route path="/admin/notifications" component={NotificationsAdmin} />
       <Route path="/profile/setup" component={ProfileSetupWizard} />
       <Route path="/profile-setup" component={ProfileSetup} />
       <Route path="/profile" component={ProfileSetup} />

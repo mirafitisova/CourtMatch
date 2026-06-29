@@ -78,6 +78,28 @@ export const courtReviews = pgTable("court_reviews", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const reengagementLog = pgTable("reengagement_log", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  emailType: varchar("email_type").notNull(),
+  referenceDate: text("reference_date").notNull(), // ISO date string YYYY-MM-DD
+  sentAt: timestamp("sent_at").defaultNow(),
+});
+
+export const broadcastNotifications = pgTable("broadcast_notifications", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  areaFilter: text("area_filter"),
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  sentAt: timestamp("sent_at"),
+  recipientCount: integer("recipient_count"),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type BroadcastNotification = typeof broadcastNotifications.$inferSelect;
+
 export const creditTransactions = pgTable("credit_transactions", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull(),

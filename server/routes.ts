@@ -8,7 +8,11 @@ import { isAuthenticated } from "./replit_integrations/auth";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
-import { sendHitRequestEmail, sendSessionReminderEmail, sendNoShowEmail, sendRatingPromptEmail } from "./email";
+import {
+  sendHitRequestEmail, sendSessionReminderEmail, sendNoShowEmail, sendRatingPromptEmail,
+  sendReengagement5d, sendReengagement10d, sendReengagement14d,
+  sendStreakWarning,
+} from "./email";
 import { registerAdminRoutes } from "./adminRoutes";
 import { registerSearchRoutes } from "./searchRoutes";
 import { haversineDistanceMiles, resolveCoords } from "@shared/lib/geo";
@@ -705,6 +709,180 @@ export async function registerRoutes(
       console.error("Session reminder cron error:", err);
       return res.status(500).json({ message: "Cron failed" });
     }
+  });
+
+  // ── Re-engagement cron (runs daily at 6 PM PT via Render cron) ───────────────
+  app.post("/api/cron/re-engagement", async (req, res) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    try {
+      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+      const now = new Date();
+      // Detect if today is Sunday in PT (UTC-7 during PDT, UTC-8 PST)
+      const ptOffset = -7 * 3600_000;
+      const ptNow = new Date(now.getTime() + ptOffset);
+      const isSunday = ptNow.getUTCDay() === 0;
+
+      let sent5d = 0, sent10d = 0, sent14d = 0, sentStreak = 0;
+
+      // ── 5/10/14-day buckets ──
+      for (const [dayMin, dayMax, type] of [[5,6,'5d'],[10,11,'10d'],[14,15,'14d']] as [number,number,string][]) {
+        const users = await storage.getUsersForReengagement(dayMin, dayMax);
+        for (const u of users) {
+          const refDate = u.lastSessionDate
+            ? u.lastSessionDate.toISOString().slice(0, 10)
+            : now.toISOString().slice(0, 10);
+          const logged = await storage.logReengagementEmail(u.id, type, refDate);
+          if (!logged || !u.unsubscribeToken) continue;
+
+          if (type === '5d') {
+            const nearbyCount = await storage.getNearbyPlayerCount(u.id);
+            await sendReengagement5d({ toEmail: u.email, firstName: u.firstName ?? "there", nearbyCount, baseUrl, unsubscribeToken: u.unsubscribeToken });
+            sent5d++;
+          } else if (type === '10d') {
+            await sendReengagement10d({ toEmail: u.email, firstName: u.firstName ?? "there", streak: u.streak, baseUrl, unsubscribeToken: u.unsubscribeToken });
+            sent10d++;
+          } else {
+            const newCount = u.lastSessionDate ? await storage.getNewPlayerCount(u.lastSessionDate) : 0;
+            await sendReengagement14d({ toEmail: u.email, firstName: u.firstName ?? "there", newPlayersCount: newCount, baseUrl, unsubscribeToken: u.unsubscribeToken });
+            sent14d++;
+          }
+        }
+      }
+
+      // ── Sunday streak protection ──
+      if (isSunday) {
+        const atRisk = await storage.getUsersForStreakWarning();
+        const thisSunday = ptNow.toISOString().slice(0, 10);
+        for (const u of atRisk) {
+          const logged = await storage.logReengagementEmail(u.id, 'streak', thisSunday);
+          if (!logged || !u.unsubscribeToken) continue;
+          await sendStreakWarning({ toEmail: u.email, firstName: u.firstName ?? "there", streak: u.streak, baseUrl, unsubscribeToken: u.unsubscribeToken });
+          sentStreak++;
+        }
+      }
+
+      // ── Scheduled broadcasts due now ──
+      const broadcasts = await storage.getBroadcasts();
+      let sentBroadcasts = 0;
+      for (const b of broadcasts) {
+        if (!b.sentAt && b.scheduledAt <= now) {
+          try {
+            const count = await storage.sendBroadcast(b.id, baseUrl);
+            sentBroadcasts += count;
+          } catch (e) { console.error("[cron] Broadcast failed:", e); }
+        }
+      }
+
+      return res.json({ sent5d, sent10d, sent14d, sentStreak, sentBroadcasts });
+    } catch (err) {
+      console.error("Re-engagement cron error:", err);
+      return res.status(500).json({ message: "Cron failed" });
+    }
+  });
+
+  // ── Unsubscribe (public) ──────────────────────────────────────────────────────
+  app.get("/api/unsubscribe", async (req, res) => {
+    const { token, type } = req.query as { token?: string; type?: string };
+    if (!token) return res.status(400).json({ message: "Missing token" });
+    try {
+      const user = await storage.getUserByUnsubscribeToken(token);
+      if (!user) return res.status(404).json({ message: "Invalid unsubscribe link" });
+
+      const prefs: Record<string, boolean> = {};
+      if (type === "all") {
+        prefs.emailSessionReminders = false;
+        prefs.emailReengagement = false;
+        prefs.emailMarketing = false;
+      } else if (type === "reengagement") {
+        prefs.emailReengagement = false;
+      } else if (type === "marketing") {
+        prefs.emailMarketing = false;
+      } else if (type === "session_reminders") {
+        prefs.emailSessionReminders = false;
+      }
+      await storage.updateEmailPreferences(user.id, prefs);
+      res.json({ ok: true, type: type ?? "all" });
+    } catch (err) {
+      res.status(500).json({ message: "Unsubscribe failed" });
+    }
+  });
+
+  // ── Email preferences ─────────────────────────────────────────────────────────
+  app.get("/api/email-preferences", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const [row] = await db.select({
+        emailSessionReminders: users.emailSessionReminders,
+        emailReengagement: users.emailReengagement,
+        emailMarketing: users.emailMarketing,
+      }).from(users).where(eq(users.id, userId)).limit(1);
+      res.json(row ?? { emailSessionReminders: true, emailReengagement: true, emailMarketing: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed" });
+    }
+  });
+
+  app.put("/api/email-preferences", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const { emailSessionReminders, emailReengagement, emailMarketing } = req.body;
+      await storage.updateEmailPreferences(userId, { emailSessionReminders, emailReengagement, emailMarketing });
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed" });
+    }
+  });
+
+  // ── Admin: broadcasts ─────────────────────────────────────────────────────────
+  app.get("/api/admin/broadcasts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const [u] = await db.select({ isAdmin: users.isAdmin }).from(users).where(eq(users.id, userId)).limit(1);
+      if (!u?.isAdmin) return res.status(403).json({ message: "Forbidden" });
+      const broadcasts = await storage.getBroadcasts();
+      res.json(broadcasts);
+    } catch (err) { res.status(500).json({ message: "Failed" }); }
+  });
+
+  app.post("/api/admin/broadcasts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const [u] = await db.select({ isAdmin: users.isAdmin }).from(users).where(eq(users.id, userId)).limit(1);
+      if (!u?.isAdmin) return res.status(403).json({ message: "Forbidden" });
+      const { title, body, areaFilter, scheduledAt } = req.body;
+      if (!title || !body || !scheduledAt) return res.status(400).json({ message: "title, body, scheduledAt required" });
+      const broadcast = await storage.createBroadcast({
+        title, body, areaFilter: areaFilter || null, scheduledAt: new Date(scheduledAt), createdBy: userId,
+      });
+      res.status(201).json(broadcast);
+    } catch (err) { res.status(500).json({ message: "Failed" }); }
+  });
+
+  app.post("/api/admin/broadcasts/:id/send", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const [u] = await db.select({ isAdmin: users.isAdmin }).from(users).where(eq(users.id, userId)).limit(1);
+      if (!u?.isAdmin) return res.status(403).json({ message: "Forbidden" });
+      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+      const count = await storage.sendBroadcast(Number(req.params.id), baseUrl);
+      res.json({ sent: count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message ?? "Failed" });
+    }
+  });
+
+  app.delete("/api/admin/broadcasts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const [u] = await db.select({ isAdmin: users.isAdmin }).from(users).where(eq(users.id, userId)).limit(1);
+      if (!u?.isAdmin) return res.status(403).json({ message: "Forbidden" });
+      const { broadcastNotifications } = await import("@shared/schema");
+      await db.delete(broadcastNotifications).where(eq(broadcastNotifications.id, Number(req.params.id)));
+      res.json({ ok: true });
+    } catch (err) { res.status(500).json({ message: "Failed" }); }
   });
 
   // ── Courts directory ──────────────────────────────────────────────────────────

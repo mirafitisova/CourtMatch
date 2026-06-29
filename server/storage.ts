@@ -1,10 +1,12 @@
 import { db } from "./db";
 import {
   profiles, hitRequests, sessionMessages, hitRequestRatings, courtReviews, creditTransactions,
+  broadcastNotifications, reengagementLog,
   type Profile, type InsertProfile, type UpdateProfileRequest,
   type HitRequest, type InsertHitRequest, type UpdateHitRequestStatus,
   type ProfileWithUser, type HitRequestWithProfiles, type SessionMessage,
   type HitRequestRating, type CourtReview, type InsertCourtReview, type CreditTransaction,
+  type BroadcastNotification,
 } from "@shared/schema";
 import {
   playerProfiles, weeklyAvailability, courts,
@@ -106,6 +108,32 @@ export interface IStorage {
   checkAndAwardReferralCredits(hitRequestId: number): Promise<void>;
   getUnnotifiedCredits(userId: string): Promise<Array<CreditTransaction & { referredUserFirstName: string | null }>>;
   markCreditsNotified(ids: number[]): Promise<void>;
+
+  // Re-engagement
+  getUsersForReengagement(dayMin: number, dayMax: number): Promise<ReengagementUser[]>;
+  getUsersForStreakWarning(): Promise<ReengagementUser[]>;
+  logReengagementEmail(userId: string, emailType: string, referenceDate: string): Promise<boolean>;
+  getNearbyPlayerCount(userId: string): Promise<number>;
+  getNewPlayerCount(since: Date): Promise<number>;
+
+  // Broadcasts
+  getBroadcasts(): Promise<BroadcastNotification[]>;
+  createBroadcast(data: { title: string; body: string; areaFilter: string | null; scheduledAt: Date; createdBy: string }): Promise<BroadcastNotification>;
+  sendBroadcast(id: number, baseUrl: string): Promise<number>;
+
+  // Email preferences
+  updateEmailPreferences(userId: string, prefs: { emailSessionReminders?: boolean; emailReengagement?: boolean; emailMarketing?: boolean }): Promise<void>;
+  getUserByUnsubscribeToken(token: string): Promise<typeof users.$inferSelect | undefined>;
+}
+
+export interface ReengagementUser {
+  id: string;
+  email: string;
+  firstName: string | null;
+  unsubscribeToken: string | null;
+  lastSessionDate: Date | null;
+  streak: number;
+  preferredAreas: string[];
 }
 
 export interface CourtReviewStats {
@@ -581,6 +609,186 @@ export class DatabaseStorage implements IStorage {
     await db.update(creditTransactions)
       .set({ notifiedAt: new Date() })
       .where(sql`id = ANY(${ids})`);
+  }
+
+  // ── Re-engagement helpers ─────────────────────────────────────────────────
+
+  async getUsersForReengagement(dayMin: number, dayMax: number): Promise<ReengagementUser[]> {
+    const now = new Date();
+    const cutoffMin = new Date(now.getTime() - dayMax * 86_400_000);
+    const cutoffMax = new Date(now.getTime() - dayMin * 86_400_000);
+
+    // Get all active users with email reengagement enabled
+    const activeUsers = await db.select({
+      id: users.id, email: users.email, firstName: users.firstName,
+      unsubscribeToken: users.unsubscribeToken,
+    }).from(users).where(
+      and(eq(users.accountStatus, 'ACTIVE'), eq(users.emailReengagement, true)),
+    );
+
+    const result: ReengagementUser[] = [];
+    for (const u of activeUsers) {
+      const sessions = await db.select({ scheduledTime: hitRequests.scheduledTime })
+        .from(hitRequests)
+        .where(and(
+          or(eq(hitRequests.requesterId, u.id), eq(hitRequests.receiverId, u.id)),
+          eq(hitRequests.status, 'completed'),
+        ));
+      if (sessions.length === 0) continue;
+
+      const dates = sessions.map(s => s.scheduledTime).filter(Boolean) as Date[];
+      const lastDate = dates.reduce((a, b) => a > b ? a : b);
+      if (lastDate < cutoffMin || lastDate > cutoffMax) continue;
+
+      const pp = await db.select({ preferredAreas: playerProfiles.preferredAreas })
+        .from(playerProfiles).where(eq(playerProfiles.userId, u.id)).limit(1);
+
+      result.push({
+        id: u.id,
+        email: u.email,
+        firstName: u.firstName,
+        unsubscribeToken: u.unsubscribeToken,
+        lastSessionDate: lastDate,
+        streak: calculateStreak(dates),
+        preferredAreas: pp[0]?.preferredAreas ?? [],
+      });
+    }
+    return result;
+  }
+
+  async getUsersForStreakWarning(): Promise<ReengagementUser[]> {
+    const { getWeekMonday } = await import('@shared/lib/stats');
+    const weekStart = new Date(getWeekMonday(new Date()));
+    const weekEnd = new Date(weekStart.getTime() + 7 * 86_400_000);
+
+    const activeUsers = await db.select({
+      id: users.id, email: users.email, firstName: users.firstName,
+      unsubscribeToken: users.unsubscribeToken,
+    }).from(users).where(
+      and(eq(users.accountStatus, 'ACTIVE'), eq(users.emailReengagement, true)),
+    );
+
+    const result: ReengagementUser[] = [];
+    for (const u of activeUsers) {
+      const sessions = await db.select({ scheduledTime: hitRequests.scheduledTime })
+        .from(hitRequests)
+        .where(and(
+          or(eq(hitRequests.requesterId, u.id), eq(hitRequests.receiverId, u.id)),
+          eq(hitRequests.status, 'completed'),
+        ));
+      const dates = sessions.map(s => s.scheduledTime).filter(Boolean) as Date[];
+      const streak = calculateStreak(dates);
+      if (streak === 0) continue; // no streak to protect
+
+      // Check if they had a session this week already
+      const thisWeek = dates.some(d => d >= weekStart && d < weekEnd);
+      if (thisWeek) continue;
+
+      result.push({
+        id: u.id, email: u.email, firstName: u.firstName,
+        unsubscribeToken: u.unsubscribeToken,
+        lastSessionDate: dates.length > 0 ? dates.reduce((a, b) => a > b ? a : b) : null,
+        streak,
+        preferredAreas: [],
+      });
+    }
+    return result;
+  }
+
+  async logReengagementEmail(userId: string, emailType: string, referenceDate: string): Promise<boolean> {
+    try {
+      await db.insert(reengagementLog).values({ userId, emailType, referenceDate });
+      return true;
+    } catch {
+      return false; // duplicate — already sent
+    }
+  }
+
+  async getNearbyPlayerCount(userId: string): Promise<number> {
+    const [pp] = await db.select({ preferredAreas: playerProfiles.preferredAreas })
+      .from(playerProfiles).where(eq(playerProfiles.userId, userId)).limit(1);
+    if (!pp?.preferredAreas?.length) {
+      const [r] = await db.select({ n: count() }).from(users).where(eq(users.accountStatus, 'ACTIVE'));
+      return Math.max(0, (r?.n ?? 0) - 1);
+    }
+    const allPPs = await db.select({ userId: playerProfiles.userId, areas: playerProfiles.preferredAreas })
+      .from(playerProfiles);
+    return allPPs.filter(p => p.userId !== userId && p.areas?.some(a => pp.preferredAreas!.includes(a))).length;
+  }
+
+  async getNewPlayerCount(since: Date): Promise<number> {
+    const [r] = await db.select({ n: count() }).from(users)
+      .where(and(eq(users.accountStatus, 'ACTIVE'), gte(users.createdAt, since)));
+    return r?.n ?? 0;
+  }
+
+  // ── Broadcasts ────────────────────────────────────────────────────────────
+
+  async getBroadcasts(): Promise<BroadcastNotification[]> {
+    return db.select().from(broadcastNotifications).orderBy(desc(broadcastNotifications.scheduledAt));
+  }
+
+  async createBroadcast(data: { title: string; body: string; areaFilter: string | null; scheduledAt: Date; createdBy: string }): Promise<BroadcastNotification> {
+    const [row] = await db.insert(broadcastNotifications).values(data).returning();
+    return row;
+  }
+
+  async sendBroadcast(id: number, baseUrl: string): Promise<number> {
+    const { sendBroadcastEmail } = await import('./email');
+    const [broadcast] = await db.select().from(broadcastNotifications).where(eq(broadcastNotifications.id, id)).limit(1);
+    if (!broadcast || broadcast.sentAt) throw new Error("Broadcast already sent or not found");
+
+    const recipients = await db.select({
+      email: users.email, firstName: users.firstName, unsubscribeToken: users.unsubscribeToken,
+      preferredAreas: playerProfiles.preferredAreas,
+    })
+      .from(users)
+      .leftJoin(playerProfiles, eq(users.id, playerProfiles.userId))
+      .where(and(eq(users.accountStatus, 'ACTIVE'), eq(users.emailMarketing, true)));
+
+    let filtered = recipients;
+    if (broadcast.areaFilter) {
+      const area = broadcast.areaFilter.toLowerCase();
+      filtered = recipients.filter(r =>
+        r.preferredAreas?.some(a => a.toLowerCase().includes(area))
+      );
+      if (filtered.length === 0) filtered = recipients; // fallback: send to all if no match
+    }
+
+    let sent = 0;
+    for (const r of filtered) {
+      if (!r.email || !r.unsubscribeToken) continue;
+      await sendBroadcastEmail({
+        toEmail: r.email,
+        firstName: r.firstName ?? "there",
+        title: broadcast.title,
+        body: broadcast.body,
+        baseUrl,
+        unsubscribeToken: r.unsubscribeToken,
+      });
+      sent++;
+    }
+
+    await db.update(broadcastNotifications)
+      .set({ sentAt: new Date(), recipientCount: sent })
+      .where(eq(broadcastNotifications.id, id));
+
+    return sent;
+  }
+
+  // ── Email preferences ─────────────────────────────────────────────────────
+
+  async updateEmailPreferences(userId: string, prefs: { emailSessionReminders?: boolean; emailReengagement?: boolean; emailMarketing?: boolean }): Promise<void> {
+    const updates: Record<string, boolean> = {};
+    if (prefs.emailSessionReminders !== undefined) updates.emailSessionReminders = prefs.emailSessionReminders;
+    if (prefs.emailReengagement !== undefined) updates.emailReengagement = prefs.emailReengagement;
+    if (prefs.emailMarketing !== undefined) updates.emailMarketing = prefs.emailMarketing;
+    await db.update(users).set(updates).where(eq(users.id, userId));
+  }
+
+  async getUserByUnsubscribeToken(token: string): Promise<typeof users.$inferSelect | undefined> {
+    const [row] = await db.select().from(users).where(eq(users.unsubscribeToken, token.toUpperCase())).limit(1);
+    return row;
   }
 
   async getPublicStats(): Promise<{ playerCount: number; sessionCount: number; courtCount: number }> {
