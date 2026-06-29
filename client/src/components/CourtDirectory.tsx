@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import {
   MapPin, Lightbulb, LightbulbOff, ChevronDown, ChevronUp,
   ExternalLink, Navigation2, SlidersHorizontal, X, CheckCircle,
-  Car, Clock, Info,
+  Car, Clock, Info, Star, MessageSquare,
 } from "lucide-react";
+import { useCourtReviewStats } from "@/hooks/use-court-reviews";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,96 @@ function TypeBadge({ type }: { type: Court["courtType"] }) {
   );
 }
 
+// ── Court review section (shown when card is expanded) ───────────────────────
+
+function ReviewSection({ courtId }: { courtId: number }) {
+  const { data: stats, isLoading } = useCourtReviewStats(courtId, true);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-2 text-slate-400 text-xs">
+        <div className="w-3 h-3 border border-slate-300 border-t-transparent rounded-full animate-spin" />
+        Loading reviews…
+      </div>
+    );
+  }
+
+  if (!stats || stats.totalReviews === 0) {
+    return (
+      <div className="flex items-center gap-2 py-2 text-slate-400 text-xs">
+        <MessageSquare className="w-3.5 h-3.5" />
+        No player reviews yet — be the first!
+      </div>
+    );
+  }
+
+  const pctItems = [
+    { label: "Nets were good",     pct: stats.netsGoodPct },
+    { label: "Surface clean",      pct: stats.surfaceCleanPct },
+    { label: "Not crowded",        pct: stats.notCrowdedPct },
+    { label: "Good lighting",      pct: stats.goodLightingPct },
+    { label: "Easy parking",       pct: stats.easyParkingPct },
+  ].filter(i => i.pct > 0);
+
+  return (
+    <div className="space-y-3">
+      {/* Header: avg rating */}
+      <div className="flex items-center gap-2">
+        <MessageSquare className="w-4 h-4 text-primary shrink-0" />
+        <span className="text-sm font-semibold text-slate-700">Player Reviews</span>
+        <div className="flex items-center gap-1 ml-1">
+          {[1,2,3,4,5].map(s => (
+            <Star key={s} className={`w-3 h-3 ${stats.averageRating && stats.averageRating >= s ? "fill-amber-400 text-amber-400" : "text-slate-200"}`} />
+          ))}
+          <span className="text-xs font-bold text-amber-600 ml-0.5">
+            {stats.averageRating?.toFixed(1)}
+          </span>
+          <span className="text-xs text-slate-400">({stats.totalReviews} review{stats.totalReviews !== 1 ? "s" : ""})</span>
+        </div>
+      </div>
+
+      {/* Toggle percentages */}
+      {pctItems.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {pctItems.map(({ label, pct }) => (
+            <span
+              key={label}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100"
+            >
+              <CheckCircle className="w-3 h-3" />
+              {pct}% {label.toLowerCase()}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Best times */}
+      {stats.bestTimes && (
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 italic">
+          <Clock className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+          {stats.bestTimes}
+        </div>
+      )}
+
+      {/* Recent excerpts */}
+      {stats.recentExcerpts.length > 0 && (
+        <div className="space-y-2 border-t border-slate-50 pt-2">
+          {stats.recentExcerpts.map((r, i) => (
+            <div key={i} className="flex gap-2 items-start">
+              <div className="flex gap-0.5 mt-0.5 shrink-0">
+                {[1,2,3,4,5].map(s => (
+                  <Star key={s} className={`w-2.5 h-2.5 ${r.overallRating >= s ? "fill-amber-400 text-amber-400" : "text-slate-200"}`} />
+                ))}
+              </div>
+              <p className="text-xs text-slate-500 italic leading-relaxed">"{r.note}"</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Individual court card ─────────────────────────────────────────────────────
 
 function CourtCard({
@@ -80,6 +171,7 @@ function CourtCard({
   onSelect?: (court: Court) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const { data: reviewStats } = useCourtReviewStats(court.id, !selectable);
 
   const handleCardClick = () => {
     if (selectable && onSelect) {
@@ -154,6 +246,15 @@ function CourtCard({
               </span>
             )}
           </div>
+
+          {/* Review rating summary */}
+          {reviewStats && reviewStats.totalReviews > 0 && (
+            <div className="flex items-center gap-1 mt-1">
+              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+              <span className="text-xs font-semibold text-amber-600">{reviewStats.averageRating?.toFixed(1)}</span>
+              <span className="text-xs text-slate-400">({reviewStats.totalReviews})</span>
+            </div>
+          )}
 
           {/* Cost hint */}
           {court.cost && (
@@ -242,6 +343,11 @@ function CourtCard({
               <p className="text-sm text-amber-800">{court.juniorNotes}</p>
             </div>
           )}
+
+          {/* Player reviews */}
+          <div className="border-t border-slate-100 pt-3">
+            <ReviewSection courtId={court.id} />
+          </div>
         </div>
       )}
     </div>

@@ -447,6 +447,71 @@ export async function registerRoutes(
     }
   });
 
+  // ── Court reviews ─────────────────────────────────────────────────────────────
+
+  app.get("/api/courts/:id/reviews", isAuthenticated, async (req, res) => {
+    try {
+      const stats = await storage.getCourtReviewStats(Number(req.params.id));
+      res.json(stats);
+    } catch (err) {
+      console.error("Court reviews error:", err);
+      res.status(500).json({ message: "Failed to load court reviews" });
+    }
+  });
+
+  app.get("/api/sessions/:id/my-court-review", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const review = await storage.getMyCourtReview(Number(req.params.id), userId);
+      res.json(review ?? null);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load court review" });
+    }
+  });
+
+  app.post("/api/sessions/:id/review-court", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const sessionId = Number(req.params.id);
+      const session = await storage.getSessionDetail(sessionId);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+      if (session.requesterId !== userId && session.receiverId !== userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      if (!session.courtId) {
+        return res.status(400).json({ message: "Session has no court" });
+      }
+
+      const existing = await storage.getMyCourtReview(sessionId, userId);
+      if (existing) return res.status(409).json({ message: "Already reviewed this court" });
+
+      const { overallRating, netsGood, surfaceClean, notCrowded, goodLighting, easyParking, note, firstTime } = req.body;
+      if (!overallRating || overallRating < 1 || overallRating > 5) {
+        return res.status(400).json({ message: "Overall rating must be 1–5" });
+      }
+
+      const review = await storage.submitCourtReview({
+        courtId: session.courtId,
+        userId,
+        hitRequestId: sessionId,
+        overallRating,
+        netsGood: !!netsGood,
+        surfaceClean: !!surfaceClean,
+        notCrowded: !!notCrowded,
+        goodLighting: !!goodLighting,
+        easyParking: !!easyParking,
+        note: note?.trim().slice(0, 140) || null,
+        firstTime: !!firstTime,
+        playedAt: session.scheduledTime ?? null,
+      });
+
+      res.status(201).json(review);
+    } catch (err) {
+      console.error("Court review error:", err);
+      res.status(500).json({ message: "Failed to submit court review" });
+    }
+  });
+
   // ── Session ratings ───────────────────────────────────────────────────────────
 
   const ratingSchema = z.object({

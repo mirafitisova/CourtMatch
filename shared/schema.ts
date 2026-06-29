@@ -61,6 +61,23 @@ export const sessionMessages = pgTable("session_messages", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const courtReviews = pgTable("court_reviews", {
+  id: serial("id").primaryKey(),
+  courtId: integer("court_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  hitRequestId: integer("hit_request_id"),
+  overallRating: integer("overall_rating").notNull(),
+  netsGood: boolean("nets_good").default(false).notNull(),
+  surfaceClean: boolean("surface_clean").default(false).notNull(),
+  notCrowded: boolean("not_crowded").default(false).notNull(),
+  goodLighting: boolean("good_lighting").default(false).notNull(),
+  easyParking: boolean("easy_parking").default(false).notNull(),
+  note: text("note"),
+  firstTime: boolean("first_time").default(false).notNull(),
+  playedAt: timestamp("played_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === RELATIONS ===
 export const profilesRelations = relations(profiles, ({ one }) => ({
   // Relation to auth users is logical via userId, but auth tables are separate
@@ -91,6 +108,10 @@ export type SessionMessage = typeof sessionMessages.$inferSelect;
 
 // Hit Request Ratings
 export type HitRequestRating = typeof hitRequestRatings.$inferSelect;
+
+// Court Reviews
+export type CourtReview = typeof courtReviews.$inferSelect;
+export type InsertCourtReview = typeof courtReviews.$inferInsert;
 
 // Complex Response Types
 export interface ProfileWithUser extends Profile {

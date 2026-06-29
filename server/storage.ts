@@ -1,10 +1,10 @@
 import { db } from "./db";
 import {
-  profiles, hitRequests, sessionMessages, hitRequestRatings,
+  profiles, hitRequests, sessionMessages, hitRequestRatings, courtReviews,
   type Profile, type InsertProfile, type UpdateProfileRequest,
   type HitRequest, type InsertHitRequest, type UpdateHitRequestStatus,
   type ProfileWithUser, type HitRequestWithProfiles, type SessionMessage,
-  type HitRequestRating,
+  type HitRequestRating, type CourtReview, type InsertCourtReview,
 } from "@shared/schema";
 import {
   playerProfiles, weeklyAvailability, courts,
@@ -96,6 +96,23 @@ export interface IStorage {
   getPlayerStats(userId: string): Promise<PlayerStats>;
   getSessionHistory(userId: string): Promise<SessionHistoryItem[]>;
   getPublicStats(): Promise<{ playerCount: number; sessionCount: number; courtCount: number }>;
+
+  // Court reviews
+  submitCourtReview(data: InsertCourtReview): Promise<CourtReview>;
+  getMyCourtReview(hitRequestId: number, userId: string): Promise<CourtReview | undefined>;
+  getCourtReviewStats(courtId: number): Promise<CourtReviewStats>;
+}
+
+export interface CourtReviewStats {
+  averageRating: number | null;
+  totalReviews: number;
+  netsGoodPct: number;
+  surfaceCleanPct: number;
+  notCrowdedPct: number;
+  goodLightingPct: number;
+  easyParkingPct: number;
+  bestTimes: string | null;
+  recentExcerpts: Array<{ note: string; overallRating: number; createdAt: Date }>;
 }
 
 export interface HitRequestExtra {
@@ -435,6 +452,75 @@ export class DatabaseStorage implements IStorage {
 
   async markRatingNotificationSent(id: number): Promise<void> {
     await db.update(hitRequests).set({ ratingNotifiedAt: new Date() }).where(eq(hitRequests.id, id));
+  }
+
+  async submitCourtReview(data: InsertCourtReview): Promise<CourtReview> {
+    const [review] = await db.insert(courtReviews).values(data).returning();
+    return review;
+  }
+
+  async getMyCourtReview(hitRequestId: number, userId: string): Promise<CourtReview | undefined> {
+    const [row] = await db.select().from(courtReviews)
+      .where(and(eq(courtReviews.hitRequestId, hitRequestId), eq(courtReviews.userId, userId)))
+      .limit(1);
+    return row;
+  }
+
+  async getCourtReviewStats(courtId: number): Promise<CourtReviewStats> {
+    const reviews = await db.select().from(courtReviews)
+      .where(eq(courtReviews.courtId, courtId))
+      .orderBy(desc(courtReviews.createdAt));
+
+    if (reviews.length === 0) {
+      return { averageRating: null, totalReviews: 0, netsGoodPct: 0, surfaceCleanPct: 0,
+               notCrowdedPct: 0, goodLightingPct: 0, easyParkingPct: 0, bestTimes: null, recentExcerpts: [] };
+    }
+
+    const n = reviews.length;
+    const avg = reviews.reduce((s, r) => s + r.overallRating, 0) / n;
+    const pct = (key: keyof typeof reviews[0]) =>
+      Math.round((reviews.filter(r => r[key] === true).length / n) * 100);
+
+    // Derive "best times" from play-time + not_crowded data
+    const bestTimes = (() => {
+      const slots = new Map<string, { uncrowded: number; total: number }>();
+      for (const r of reviews) {
+        if (!r.playedAt) continue;
+        const d = new Date(r.playedAt);
+        const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+        const h = d.getHours();
+        const period = h < 12 ? "mornings" : h < 17 ? "afternoons" : "evenings";
+        const key = `${isWeekend ? "weekend" : "weekday"} ${period}`;
+        const slot = slots.get(key) ?? { uncrowded: 0, total: 0 };
+        slots.set(key, { uncrowded: slot.uncrowded + (r.notCrowded ? 1 : 0), total: slot.total + 1 });
+      }
+      let bestKey: string | null = null;
+      let bestPct = 0;
+      for (const [key, { uncrowded, total }] of slots) {
+        if (total >= 2) {
+          const p = uncrowded / total;
+          if (p > bestPct) { bestPct = p; bestKey = key; }
+        }
+      }
+      return bestKey && bestPct >= 0.5 ? `Players say ${bestKey} are least crowded` : null;
+    })();
+
+    const recentExcerpts = reviews
+      .filter(r => r.note && r.note.trim().length > 0)
+      .slice(0, 3)
+      .map(r => ({ note: r.note!, overallRating: r.overallRating, createdAt: r.createdAt! }));
+
+    return {
+      averageRating: Math.round(avg * 10) / 10,
+      totalReviews: n,
+      netsGoodPct: pct("netsGood"),
+      surfaceCleanPct: pct("surfaceClean"),
+      notCrowdedPct: pct("notCrowded"),
+      goodLightingPct: pct("goodLighting"),
+      easyParkingPct: pct("easyParking"),
+      bestTimes,
+      recentExcerpts,
+    };
   }
 
   async getPublicStats(): Promise<{ playerCount: number; sessionCount: number; courtCount: number }> {
