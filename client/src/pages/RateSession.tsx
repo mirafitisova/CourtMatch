@@ -102,7 +102,7 @@ export default function RateSession() {
   if (existingRating || submitted) {
     const goRequest = bookAgain && submitted;
     if (goRequest) {
-      setTimeout(() => navigate(`/requests?request=${partnerId}`), 800);
+      setTimeout(() => navigate(`/player/${partnerId}`), 800);
     }
     return (
       <div className="min-h-screen bg-muted/30">
@@ -116,7 +116,7 @@ export default function RateSession() {
             <p className="text-muted-foreground">
               {submitted
                 ? goRequest
-                  ? `Sending you to book another hit with ${partner.user?.firstName ?? partnerName}…`
+                  ? `Taking you to ${partner.user?.firstName ?? partnerName}'s profile to book another hit…`
                   : `Thanks for rating your session with ${partnerName}.`
                 : `You've already rated this session with ${partnerName}.`}
             </p>
@@ -227,7 +227,7 @@ export default function RateSession() {
                       Hit with {partner.user?.firstName ?? partnerName} again?
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Opens the request form pre-filled with this partner after submitting
+                      Takes you to their profile to send a new hit request after submitting
                     </p>
                   </div>
                 </label>

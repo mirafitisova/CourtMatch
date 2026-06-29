@@ -7,6 +7,8 @@ import {
   ArrowLeft, BadgeCheck, School, Locate, MapPin,
   Clock, Users, ChevronRight, AlertTriangle, Star,
 } from "lucide-react";
+import { CreateRequestModal } from "@/components/CreateRequestModal";
+import type { ProfileWithUser } from "@shared/schema";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -385,13 +387,24 @@ export default function PlayerProfile() {
 
           {/* CTA */}
           <div className="mt-4 pt-4 border-t border-slate-100">
-            <Button
-              className="w-full"
-              onClick={() => (window.location.href = `/requests?request=${player.userId}`)}
-            >
-              Send Hit Request
-              <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
+            <CreateRequestModal
+              receiver={{
+                id: 0,
+                userId: player.userId,
+                utrRating: player.utrRating,
+                bio: player.bio,
+                location: null,
+                availability: null,
+                createdAt: null,
+                user: { firstName: player.firstName, lastName: player.lastInitial, profileImageUrl: null },
+              } as ProfileWithUser}
+              trigger={
+                <Button className="w-full">
+                  Send Hit Request
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              }
+            />
           </div>
         </div>
 

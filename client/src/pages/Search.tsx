@@ -10,6 +10,8 @@ import {
   BadgeCheck, School, Locate, Link2, ChevronUp, UserCircle,
   ArrowUpDown, Zap,
 } from "lucide-react";
+import { CreateRequestModal } from "@/components/CreateRequestModal";
+import type { ProfileWithUser } from "@shared/schema";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -235,16 +237,27 @@ function PlayerCard({ player }: { player: SearchResult }) {
 
       <div className="flex flex-col items-center gap-2 shrink-0">
         <ScoreRing score={player.compatibilityScore} />
-        <Button
-          size="sm"
-          className="text-xs px-3 h-7"
-          onClick={(e) => {
-            e.stopPropagation();
-            window.location.href = `/requests?request=${player.userId}`;
-          }}
-        >
-          Request
-        </Button>
+        <CreateRequestModal
+          receiver={{
+            id: 0,
+            userId: player.userId,
+            utrRating: player.utrRating,
+            bio: null,
+            location: null,
+            availability: null,
+            createdAt: null,
+            user: { firstName: player.firstName, lastName: null, profileImageUrl: null },
+          } as ProfileWithUser}
+          trigger={
+            <Button
+              size="sm"
+              className="text-xs px-3 h-7"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Request
+            </Button>
+          }
+        />
       </div>
     </div>
   );
