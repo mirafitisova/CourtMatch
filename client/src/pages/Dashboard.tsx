@@ -2,11 +2,12 @@ import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profiles";
 import { useHitRequests } from "@/hooks/use-hit-requests";
 import { useUpcomingSessions } from "@/hooks/use-sessions";
+import { useMyStats } from "@/hooks/use-stats";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Trophy, MapPin, Calendar, Clock, ArrowRight, UserCircle } from "lucide-react";
+import { Trophy, MapPin, Calendar, Clock, ArrowRight, UserCircle, Flame, History } from "lucide-react";
 import { Link, Redirect } from "wouter";
 import { format } from "date-fns";
 
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const { data: profile, isLoading: profileLoading } = useProfile(user.id);
   const { data: requests, isLoading: requestsLoading } = useHitRequests();
   const { data: upcomingSessions = [] } = useUpcomingSessions();
+  const { data: stats } = useMyStats();
 
   if (profileLoading || requestsLoading) {
     return (
@@ -66,6 +68,35 @@ export default function Dashboard() {
               </div>
               <Link href="/onboarding">
                 <Button size="sm" className="shrink-0">Complete Profile</Button>
+              </Link>
+            </div>
+          )}
+
+          {/* Quick stats */}
+          {stats && (stats.totalSessions > 0 || stats.streak > 0) && (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-white rounded-2xl border shadow-sm p-4 flex items-center gap-3">
+                <Flame className="w-7 h-7 text-orange-500 shrink-0" />
+                <div>
+                  <p className="text-2xl font-display font-bold text-primary leading-none">{stats.streak}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">week streak</p>
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl border shadow-sm p-4 flex items-center gap-3">
+                <Calendar className="w-7 h-7 text-primary shrink-0" />
+                <div>
+                  <p className="text-2xl font-display font-bold text-primary leading-none">{stats.sessionsThisMonth}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">this month</p>
+                </div>
+              </div>
+              <Link href="/sessions">
+                <div className="bg-white rounded-2xl border shadow-sm p-4 flex items-center gap-3 cursor-pointer hover:border-primary/30 transition-colors">
+                  <History className="w-7 h-7 text-accent shrink-0" />
+                  <div>
+                    <p className="text-2xl font-display font-bold text-primary leading-none">{stats.totalSessions}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">total</p>
+                  </div>
+                </div>
               </Link>
             </div>
           )}

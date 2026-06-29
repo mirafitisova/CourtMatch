@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { Trophy, Users, Calendar, UserCircle, LogOut, Menu, X, MapPin } from "lucide-react";
+import { Trophy, Users, Calendar, UserCircle, LogOut, Menu, X, MapPin, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
@@ -15,6 +15,7 @@ export function Navigation() {
     { href: "/", label: "Find Partners", icon: Users },
     { href: "/courts", label: "Courts", icon: MapPin },
     { href: "/requests", label: "Requests", icon: Calendar },
+    { href: "/sessions", label: "History", icon: History },
     { href: "/profile", label: "My Profile", icon: UserCircle },
   ];
 

@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile, useUpdateProfile } from "@/hooks/use-profiles";
+import { useMyStats } from "@/hooks/use-stats";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertProfileSchema } from "@shared/schema";
@@ -8,10 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Navigation } from "@/components/Navigation";
-import { Trophy, MapPin, User } from "lucide-react";
+import { Trophy, MapPin, User, Star, History } from "lucide-react";
 import { z } from "zod";
-import { Redirect, useLocation } from "wouter";
+import { Link, Redirect, useLocation } from "wouter";
 import { useEffect } from "react";
+import { format } from "date-fns";
 
 // Schema for the form
 const formSchema = insertProfileSchema.pick({
@@ -28,6 +30,7 @@ export default function ProfileSetup() {
   const [, setLocation] = useLocation();
   const { data: profile, isLoading } = useProfile(user?.id || "");
   const updateProfile = useUpdateProfile();
+  const { data: stats } = useMyStats();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -141,6 +144,75 @@ export default function ProfileSetup() {
               </form>
             </CardContent>
           </Card>
+          {/* Stats card */}
+          {stats && (
+            <Card className="border-0 shadow-xl shadow-black/5 rounded-3xl bg-white">
+              <CardHeader className="pb-2 border-b">
+                <CardTitle className="text-lg font-display font-semibold text-primary flex items-center gap-2">
+                  <History className="w-5 h-5 text-accent" /> Your Stats
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-5 space-y-4">
+                {/* Session counts */}
+                <p className="text-sm text-slate-700">
+                  <span className="font-semibold">{stats.totalSessions}</span> total sessions
+                  {" · "}
+                  <span className="font-semibold">{stats.sessionsThisMonth}</span> this month
+                  {stats.streak > 0 && (
+                    <> · <span className="font-semibold">{stats.streak}</span>-week streak 🔥</>
+                  )}
+                </p>
+
+                {/* Avg rating */}
+                {stats.avgRating != null && (
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <Star
+                          key={star}
+                          className={`w-4 h-4 ${stats.avgRating! >= star ? "fill-amber-400 text-amber-400" : stats.avgRating! >= star - 0.5 ? "fill-amber-200 text-amber-400" : "text-slate-200"}`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-sm font-semibold text-amber-600">{stats.avgRating.toFixed(1)}</span>
+                    <span className="text-sm text-muted-foreground">avg rating</span>
+                  </div>
+                )}
+
+                {/* Frequent partners / courts */}
+                {stats.mostFrequentPartnerFirstName && (
+                  <p className="text-sm text-muted-foreground">
+                    Most frequent partner: <span className="font-medium text-foreground">
+                      {stats.mostFrequentPartnerFirstName} {stats.mostFrequentPartnerLastName}
+                    </span>
+                  </p>
+                )}
+                {stats.mostFrequentCourtName && (
+                  <p className="text-sm text-muted-foreground">
+                    Favourite court: <span className="font-medium text-foreground">{stats.mostFrequentCourtName}</span>
+                  </p>
+                )}
+                {stats.mostFrequentPracticeType && (
+                  <p className="text-sm text-muted-foreground">
+                    Top practice type: <span className="font-medium text-foreground">{stats.mostFrequentPracticeType}</span>
+                  </p>
+                )}
+
+                {/* Member since */}
+                {stats.memberSince && (
+                  <p className="text-xs text-muted-foreground border-t pt-3">
+                    Member since {format(new Date(stats.memberSince), "MMMM yyyy")}
+                  </p>
+                )}
+
+                <Link href="/sessions">
+                  <Button variant="outline" size="sm" className="rounded-xl w-full">
+                    View Session History
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </main>
     </div>

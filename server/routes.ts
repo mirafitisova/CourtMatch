@@ -243,6 +243,41 @@ export async function registerRoutes(
 
   // ── Session detail & messaging ────────────────────────────────────────────────
 
+  // ── Player stats ──────────────────────────────────────────────────────────────
+  app.get("/api/stats/me", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const stats = await storage.getPlayerStats(userId);
+      res.json(stats);
+    } catch (err) {
+      console.error("Stats error:", err);
+      res.status(500).json({ message: "Failed to load stats" });
+    }
+  });
+
+  app.get("/api/stats/:userId", isAuthenticated, async (req, res) => {
+    try {
+      const stats = await storage.getPlayerStats(req.params.userId);
+      res.json(stats);
+    } catch (err) {
+      console.error("Stats error:", err);
+      res.status(500).json({ message: "Failed to load stats" });
+    }
+  });
+
+  // ── Session history ──────────────────────────────────────────────────────────
+  // Must be registered before /api/sessions/:id to avoid route collision
+  app.get("/api/sessions/history", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      const history = await storage.getSessionHistory(userId);
+      res.json(history);
+    } catch (err) {
+      console.error("Session history error:", err);
+      res.status(500).json({ message: "Failed to load session history" });
+    }
+  });
+
   app.get("/api/sessions/upcoming", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.session as any).userId;

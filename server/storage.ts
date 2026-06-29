@@ -13,6 +13,42 @@ import {
 } from "@shared/models/tennis";
 import { users } from "@shared/models/auth";
 import { eq, or, and, desc, gte, lte, isNull, isNotNull } from "drizzle-orm";
+import { calculateStreak } from "@shared/lib/stats";
+
+export interface PlayerStats {
+  streak: number;
+  sessionsThisMonth: number;
+  totalSessions: number;
+  mostFrequentPracticeType: string | null;
+  mostFrequentCourtId: number | null;
+  mostFrequentCourtName: string | null;
+  mostFrequentPartnerId: string | null;
+  mostFrequentPartnerFirstName: string | null;
+  mostFrequentPartnerLastName: string | null;
+  avgRating: number | null;
+  memberSince: Date | null;
+}
+
+export interface RatingSnapshot {
+  reliability: number;
+  skillAccuracy: number;
+  partnerQuality: number;
+  note: string | null;
+}
+
+export interface SessionHistoryItem {
+  id: number;
+  scheduledTime: Date | null;
+  practiceType: string | null;
+  location: string | null;
+  courtId: number | null;
+  courtName: string | null;
+  partnerId: string;
+  partnerFirstName: string | null;
+  partnerLastName: string | null;
+  myRating: RatingSnapshot | null;
+  theirRating: RatingSnapshot | null;
+}
 
 export interface IStorage {
   // Profiles
@@ -55,6 +91,10 @@ export interface IStorage {
   recalculatePlayerRating(userId: string): Promise<void>;
   getSessionsForRatingNotification(windowStart: Date, windowEnd: Date): Promise<HitRequest[]>;
   markRatingNotificationSent(id: number): Promise<void>;
+
+  // Stats
+  getPlayerStats(userId: string): Promise<PlayerStats>;
+  getSessionHistory(userId: string): Promise<SessionHistoryItem[]>;
 }
 
 export interface HitRequestExtra {
@@ -394,6 +434,123 @@ export class DatabaseStorage implements IStorage {
 
   async markRatingNotificationSent(id: number): Promise<void> {
     await db.update(hitRequests).set({ ratingNotifiedAt: new Date() }).where(eq(hitRequests.id, id));
+  }
+
+  async getPlayerStats(userId: string): Promise<PlayerStats> {
+    const [completedSessions, userRow, profileRow] = await Promise.all([
+      db.select()
+        .from(hitRequests)
+        .where(and(
+          or(eq(hitRequests.requesterId, userId), eq(hitRequests.receiverId, userId)),
+          eq(hitRequests.status, 'completed'),
+        )),
+      db.select({ createdAt: users.createdAt }).from(users).where(eq(users.id, userId)).limit(1),
+      db.select({ avgRating: playerProfiles.avgRating }).from(playerProfiles).where(eq(playerProfiles.userId, userId)).limit(1),
+    ]);
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const sessionDates = completedSessions
+      .filter(s => s.scheduledTime != null)
+      .map(s => s.scheduledTime!);
+
+    const sessionsThisMonth = completedSessions.filter(
+      s => s.scheduledTime && new Date(s.scheduledTime) >= monthStart,
+    ).length;
+
+    // Most frequent practice type
+    const practiceMap = new Map<string, number>();
+    const courtMap = new Map<number, number>();
+    const partnerMap = new Map<string, number>();
+    for (const s of completedSessions) {
+      if (s.practiceType) practiceMap.set(s.practiceType, (practiceMap.get(s.practiceType) ?? 0) + 1);
+      if (s.courtId) courtMap.set(s.courtId, (courtMap.get(s.courtId) ?? 0) + 1);
+      const pid = s.requesterId === userId ? s.receiverId : s.requesterId;
+      partnerMap.set(pid, (partnerMap.get(pid) ?? 0) + 1);
+    }
+
+    const topPracticeType = practiceMap.size > 0
+      ? [...practiceMap.entries()].sort((a, b) => b[1] - a[1])[0][0]
+      : null;
+
+    let mostFrequentCourtId: number | null = null;
+    let mostFrequentCourtName: string | null = null;
+    if (courtMap.size > 0) {
+      mostFrequentCourtId = [...courtMap.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      const [court] = await db.select({ name: courts.name }).from(courts).where(eq(courts.id, mostFrequentCourtId)).limit(1);
+      mostFrequentCourtName = court?.name ?? null;
+    }
+
+    let mostFrequentPartnerId: string | null = null;
+    let mostFrequentPartnerFirstName: string | null = null;
+    let mostFrequentPartnerLastName: string | null = null;
+    if (partnerMap.size > 0) {
+      mostFrequentPartnerId = [...partnerMap.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      const [pu] = await db.select({ firstName: users.firstName, lastName: users.lastName })
+        .from(users).where(eq(users.id, mostFrequentPartnerId)).limit(1);
+      mostFrequentPartnerFirstName = pu?.firstName ?? null;
+      mostFrequentPartnerLastName = pu?.lastName ?? null;
+    }
+
+    return {
+      streak: calculateStreak(sessionDates),
+      sessionsThisMonth,
+      totalSessions: completedSessions.length,
+      mostFrequentPracticeType: topPracticeType,
+      mostFrequentCourtId,
+      mostFrequentCourtName,
+      mostFrequentPartnerId,
+      mostFrequentPartnerFirstName,
+      mostFrequentPartnerLastName,
+      avgRating: profileRow[0]?.avgRating ?? null,
+      memberSince: userRow[0]?.createdAt ?? null,
+    };
+  }
+
+  async getSessionHistory(userId: string): Promise<SessionHistoryItem[]> {
+    const sessions = await db.select()
+      .from(hitRequests)
+      .where(and(
+        or(eq(hitRequests.requesterId, userId), eq(hitRequests.receiverId, userId)),
+        eq(hitRequests.status, 'completed'),
+      ))
+      .orderBy(desc(hitRequests.scheduledTime));
+
+    return Promise.all(sessions.map(async (s) => {
+      const partnerId = s.requesterId === userId ? s.receiverId : s.requesterId;
+
+      const [[partnerUser], court, myRatingRow, theirRatingRow] = await Promise.all([
+        db.select({ firstName: users.firstName, lastName: users.lastName })
+          .from(users).where(eq(users.id, partnerId)).limit(1),
+        s.courtId
+          ? db.select({ name: courts.name }).from(courts).where(eq(courts.id, s.courtId)).limit(1).then(r => r[0] ?? null)
+          : Promise.resolve(null),
+        db.select().from(hitRequestRatings)
+          .where(and(eq(hitRequestRatings.hitRequestId, s.id), eq(hitRequestRatings.raterId, userId)))
+          .limit(1).then(r => r[0] ?? null),
+        db.select().from(hitRequestRatings)
+          .where(and(eq(hitRequestRatings.hitRequestId, s.id), eq(hitRequestRatings.raterId, partnerId)))
+          .limit(1).then(r => r[0] ?? null),
+      ]);
+
+      const toSnapshot = (r: typeof myRatingRow): RatingSnapshot | null =>
+        r ? { reliability: r.reliability, skillAccuracy: r.skillAccuracy, partnerQuality: r.partnerQuality, note: r.note } : null;
+
+      return {
+        id: s.id,
+        scheduledTime: s.scheduledTime,
+        practiceType: s.practiceType,
+        location: s.location,
+        courtId: s.courtId,
+        courtName: (court as any)?.name ?? null,
+        partnerId,
+        partnerFirstName: partnerUser?.firstName ?? null,
+        partnerLastName: partnerUser?.lastName ?? null,
+        myRating: toSnapshot(myRatingRow),
+        theirRating: toSnapshot(theirRatingRow),
+      };
+    }));
   }
 }
 

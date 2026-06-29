@@ -23,6 +23,7 @@ import PlayerProfile from "@/pages/PlayerProfile";
 import Courts from "@/pages/Courts";
 import SessionDetail from "@/pages/SessionDetail";
 import RateSession from "@/pages/RateSession";
+import Sessions from "@/pages/Sessions";
 
 function Router() {
   const { user, isLoading } = useAuth();
@@ -47,6 +48,7 @@ function Router() {
       <Route path="/player/:id" component={PlayerProfile} />
       <Route path="/players" component={FindPlayers} />
       <Route path="/requests" component={Requests} />
+      <Route path="/sessions" component={Sessions} />
       <Route path="/profile/setup" component={ProfileSetupWizard} />
       <Route path="/profile-setup" component={ProfileSetup} />
       <Route path="/profile" component={ProfileSetup} />

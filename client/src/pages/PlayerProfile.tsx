@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { CreateRequestModal } from "@/components/CreateRequestModal";
 import type { ProfileWithUser } from "@shared/schema";
+import { usePlayerStats } from "@/hooks/use-stats";
+import { format } from "date-fns";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -242,6 +244,8 @@ export default function PlayerProfile() {
     retry: false,
   });
 
+  const { data: playerStats } = usePlayerStats(params.id ?? "");
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50">
@@ -373,6 +377,40 @@ export default function PlayerProfile() {
             <p className="mt-4 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-4">
               {player.bio}
             </p>
+          )}
+
+          {/* Stats section */}
+          {playerStats && (playerStats.totalSessions > 0 || playerStats.memberSince) && (
+            <div className="mt-4 border-t border-slate-100 pt-4 space-y-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Stats</p>
+              <p className="text-sm text-slate-700">
+                <span className="font-semibold">{playerStats.totalSessions}</span> total sessions
+                {" · "}
+                <span className="font-semibold">{playerStats.sessionsThisMonth}</span> this month
+                {playerStats.streak > 0 && (
+                  <> · <span className="font-semibold">{playerStats.streak}</span>-week streak 🔥</>
+                )}
+              </p>
+              {playerStats.avgRating != null && (
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-0.5">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <Star
+                        key={star}
+                        className={`w-3.5 h-3.5 ${playerStats.avgRating! >= star ? "fill-amber-400 text-amber-400" : playerStats.avgRating! >= star - 0.5 ? "fill-amber-200 text-amber-400" : "text-slate-200"}`}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-sm font-semibold text-amber-600">{playerStats.avgRating.toFixed(1)}</span>
+                  <span className="text-xs text-slate-400">avg rating</span>
+                </div>
+              )}
+              {playerStats.memberSince && (
+                <p className="text-xs text-slate-400">
+                  Member since {format(new Date(playerStats.memberSince), "MMM yyyy")}
+                </p>
+              )}
+            </div>
           )}
 
           {/* No-show warning */}
