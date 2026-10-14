@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { motion, useInView } from "framer-motion";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
   Trophy, ArrowRight, UserCircle, Search, Calendar,
@@ -11,43 +10,6 @@ import {
 
 const courtHero = "https://images.unsplash.com/photo-1478327130949-c96cb25ee9c4?w=1920&q=85&fit=crop&auto=format";
 const aerialCourt = "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?w=1200&q=85&fit=crop&auto=format";
-
-// ── Count-up hook ─────────────────────────────────────────────────────────────
-
-function useCountUp(target: number, enabled: boolean, duration = 1400) {
-  const [value, setValue] = useState(0);
-  useEffect(() => {
-    if (!enabled || target === 0) return;
-    setValue(0);
-    const start = performance.now();
-    let raf: number;
-    const tick = (now: number) => {
-      const t = Math.min((now - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setValue(Math.round(eased * target));
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, enabled, duration]);
-  return value;
-}
-
-// ── Animated stat number ──────────────────────────────────────────────────────
-
-function StatNumber({ target, label, suffix = "+" }: { target: number; label: string; suffix?: string }) {
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: true, margin: "-80px" });
-  const displayed = useCountUp(target, inView);
-  return (
-    <div ref={ref} className="text-center">
-      <p className="text-5xl md:text-6xl font-display font-bold text-white tabular-nums">
-        {displayed.toLocaleString()}{target > 0 ? suffix : ""}
-      </p>
-      <p className="mt-2 text-base text-white/70 font-medium">{label}</p>
-    </div>
-  );
-}
 
 // ── Scroll-aware navbar ───────────────────────────────────────────────────────
 
@@ -105,11 +67,6 @@ function Navbar() {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Landing() {
-  const { data: publicStats } = useQuery<{ playerCount: number; sessionCount: number; courtCount: number }>({
-    queryKey: ["/api/public/stats"],
-    staleTime: 5 * 60 * 1000,
-  });
-
   const fadeUp = {
     hidden: { opacity: 0, y: 24 },
     show: { opacity: 1, y: 0 },
@@ -259,61 +216,6 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── 3. SOCIAL PROOF ─────────────────────────────────────────────────── */}
-      <section className="py-24 px-5 bg-gradient-to-br from-[#1a4a2e] to-[#2D7A4F] relative overflow-hidden">
-        {/* Subtle texture */}
-        <div className="absolute inset-0 opacity-10"
-          style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "32px 32px" }}
-        />
-        <div className="relative max-w-4xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            className="text-center mb-14"
-          >
-            <h2 className="text-3xl md:text-4xl font-display font-bold text-white mb-3">
-              Growing every day
-            </h2>
-            <p className="text-white/60 text-base">Real numbers, updated live</p>
-          </motion.div>
-
-          <div className="grid grid-cols-3 gap-6 md:gap-12">
-            <StatNumber
-              target={publicStats?.playerCount ?? 0}
-              label="players on CourtMatch"
-            />
-            <StatNumber
-              target={publicStats?.sessionCount ?? 0}
-              label="sessions completed"
-            />
-            <StatNumber
-              target={publicStats?.courtCount ?? 0}
-              label="courts in directory"
-              suffix=""
-            />
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            className="mt-16 text-center"
-          >
-            <Link href="/signup">
-              <Button
-                size="lg"
-                className="h-14 px-10 font-bold bg-accent text-accent-foreground hover:bg-accent/90 rounded-2xl shadow-xl"
-              >
-                Join them today <ArrowRight className="ml-2 w-5 h-5" />
-              </Button>
-            </Link>
-          </motion.div>
-        </div>
-      </section>
-
       {/* ── 4. SAFETY ───────────────────────────────────────────────────────── */}
       <section className="py-24 px-5 bg-slate-50">
         <div className="max-w-5xl mx-auto">
@@ -399,7 +301,7 @@ export default function Landing() {
                 CourtMatch is free for players and designed to complement your coaching program.
               </p>
             </div>
-            <a href="mailto:hello@courtmatch.com" className="shrink-0">
+            <a href="mailto:hello@courtmatch.org" className="shrink-0">
               <Button variant="outline" className="rounded-xl border-primary/30 text-primary hover:bg-primary/5 gap-2">
                 <Mail className="w-4 h-4" />
                 Contact us
@@ -439,7 +341,7 @@ export default function Landing() {
               <p className="text-sm font-bold text-slate-300 uppercase tracking-widest mb-4">Safety</p>
               <ul className="space-y-2 text-sm">
                 <li><Link href="/safety-guidelines" className="hover:text-white transition-colors">Safety Guidelines</Link></li>
-                <li><a href="mailto:hello@courtmatch.com" className="hover:text-white transition-colors">Report an Issue</a></li>
+                <li><a href="mailto:hello@courtmatch.org" className="hover:text-white transition-colors">Report an Issue</a></li>
               </ul>
             </div>
 
@@ -447,7 +349,7 @@ export default function Landing() {
             <div>
               <p className="text-sm font-bold text-slate-300 uppercase tracking-widest mb-4">Contact</p>
               <ul className="space-y-2 text-sm">
-                <li><a href="mailto:hello@courtmatch.com" className="hover:text-white transition-colors">hello@courtmatch.com</a></li>
+                <li><a href="mailto:hello@courtmatch.org" className="hover:text-white transition-colors">hello@courtmatch.org</a></li>
                 <li><a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Instagram</a></li>
               </ul>
             </div>
